@@ -76,6 +76,11 @@ docker-build:
 # through QEMU instead -- slower, but this is tag-driven and the alternative is
 # shipping amd64 only, which is what the account suspension already cost us
 # once. TrueNAS and Unraid users pull arm64.
+#
+# The version is the tag without its leading "v". publish.yml used
+# `git describe --tags --always`, which on a tag pipeline is exactly the tag;
+# the first port passed the tag with the "v" still on, so /api/health would
+# have reported a different string from every earlier build.
 publish:
   stage: publish
   image: docker:28-cli@sha256:625d9431a9f54c5a2bc90f24f0e1c3d55b1349fd857dd85035f98c2c9acbdd4d # 28-cli
@@ -88,9 +93,9 @@ publish:
     - |
       docker buildx build \
         --platform linux/amd64,linux/arm64 \
-        --build-arg IHASVPN_VERSION="$CI_COMMIT_TAG" \
+        --build-arg IHASVPN_VERSION="${CI_COMMIT_TAG#v}" \
         --provenance=false --sbom=false \
-        --tag "$IMAGE:$CI_COMMIT_TAG" \
+        --tag "$IMAGE:${CI_COMMIT_TAG#v}" \
         --tag "$IMAGE:latest" \
         --push .
   after_script:
