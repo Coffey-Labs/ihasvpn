@@ -1,0 +1,99 @@
+# CI on the self-hosted GitLab, ported from .github/workflows/ci.yml and
+# publish.yml when the GitHub account was suspended on 2026-09-20. The Actions
+# files stay in the tree: they are the reference this was written from and work
+# unchanged if the appeal succeeds.
+#
+# This one mattered more than most. ghcr.io/coffey-labs/ihasvpn went dark with
+# the account while the deployment on Web_Host was still pulling from it, and
+# the only surviving copy was the image already on that host -- amd64 only,
+# because that is the platform it runs. The multi-arch tag is rebuilt here.
+#
+# Images are pinned by digest, with the tag in the trailing comment: the
+# replacement for the workflow's SHA-pinned actions, since GitLab has no
+# action allowlist.
+
+stages: [build, check, publish]
+
+variables:
+  IMAGE: $CI_REGISTRY_IMAGE
+
+default:
+  interruptible: true
+
+.on-change: &on-change
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# The Go binary embeds the built web assets, so the frontend build comes first
+# and hands its output to the Go job as an artifact.
+web:
+  stage: build
+  image: node:26-bookworm-slim@sha256:582460f614631b59b824ac6020533b9bf339c7fdf3a6d7db31abb6b4065f0212 # 26-bookworm-slim
+  variables:
+    NPM_CONFIG_CACHE: "$CI_PROJECT_DIR/.npm"
+  cache:
+    key:
+      files: [web/package-lock.json]
+    paths: [.npm/]
+  script:
+    - cd web
+    - npm ci --ignore-scripts --no-audit --no-fund
+    - npm run build
+  artifacts:
+    paths: [web/dist/]
+    expire_in: 1 week
+  <<: *on-change
+
+go:
+  stage: check
+  image: golang:1.27-bookworm@sha256:69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195 # 1.27-bookworm
+  needs: [web]
+  cache:
+    key: go-mod
+    paths: [.gocache/]
+  variables:
+    GOPATH: "$CI_PROJECT_DIR/.gocache"
+  script:
+    - go vet ./...
+    - go test -count=1 ./...
+    # Left as `go run ...@latest`, as the workflow had it: a vulnerability
+    # check wants today's database, not a pinned copy of last month's.
+    - go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+  <<: *on-change
+
+docker-build:
+  stage: check
+  image: docker:28-cli@sha256:625d9431a9f54c5a2bc90f24f0e1c3d55b1349fd857dd85035f98c2c9acbdd4d # 28-cli
+  needs: [web]
+  script:
+    - docker build -t ihasvpn:ci-$CI_COMMIT_SHORT_SHA .
+    - docker image rm ihasvpn:ci-$CI_COMMIT_SHORT_SHA
+  <<: *on-change
+
+# The workflow built each platform on its own native runner and joined the two
+# digests into one tag. There is a single amd64 runner here, so arm64 goes
+# through QEMU instead -- slower, but this is tag-driven and the alternative is
+# shipping amd64 only, which is what the account suspension already cost us
+# once. TrueNAS and Unraid users pull arm64.
+publish:
+  stage: publish
+  image: docker:28-cli@sha256:625d9431a9f54c5a2bc90f24f0e1c3d55b1349fd857dd85035f98c2c9acbdd4d # 28-cli
+  needs: [web, go]
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+    - docker run --privileged --rm tonistiigi/binfmt --install arm64
+    - docker buildx create --use --name ci-builder --driver docker-container || docker buildx use ci-builder
+  script:
+    - |
+      docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        --build-arg IHASVPN_VERSION="$CI_COMMIT_TAG" \
+        --provenance=false --sbom=false \
+        --tag "$IMAGE:$CI_COMMIT_TAG" \
+        --tag "$IMAGE:latest" \
+        --push .
+  after_script:
+    - docker logout "$CI_REGISTRY" || true
+  rules:
+    - if: $CI_COMMIT_TAG
