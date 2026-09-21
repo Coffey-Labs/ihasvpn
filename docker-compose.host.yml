@@ -11,7 +11,7 @@
 # IHASVPN_TLS_SELF_SIGNED to reach it from elsewhere.
 services:
   ihasvpn:
-    image: ghcr.io/coffey-labs/ihasvpn:latest
+    image: registry.coffeylabs.org/coffey-labs/ihasvpn:latest
     container_name: ihasvpn
     restart: unless-stopped
     network_mode: host
