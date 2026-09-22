@@ -70,7 +70,7 @@ apply without a restart.
 ## Quick start
 
 ```sh
-curl -O https://raw.githubusercontent.com/Coffey-Labs/ihasvpn/main/docker-compose.yml
+curl -O https://git.coffeylabs.org/coffey-labs/ihasvpn/raw/branch/main/docker-compose.yml
 # edit IHASVPN_ENDPOINT (your public hostname or IP), then:
 docker compose up -d
 ```

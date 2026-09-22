@@ -13,7 +13,7 @@ export function Legal({ center = false }: { center?: boolean }) {
       <span className="legal-sep" aria-hidden="true">
         ·
       </span>
-      <a href="https://github.com/Coffey-Labs/ihasvpn" target="_blank" rel="noreferrer">
+      <a href="https://git.coffeylabs.org/coffey-labs/ihasvpn" target="_blank" rel="noreferrer">
         AGPL-3.0 source
       </a>
     </p>
