@@ -1,0 +1,134 @@
+# CI on the self-hosted Gitea, ported from .gitlab-ci.yml during the move off
+# GitLab (2026-09-22). Gitea reads .gitea/workflows and ignores .github/ once
+# this directory exists; .github/workflows stays as it was for GitHub.
+#
+# This one mattered more than most. ghcr.io/coffey-labs/ihasvpn went dark with
+# the account while the deployment was still pulling from it, and the only
+# surviving copy was the image already on the host -- amd64 only, because that
+# is the platform it runs. The multi-arch tag is rebuilt here.
+#
+# Every job runs in an image pinned by digest (tag in the trailing comment),
+# and the only action used is coffey-labs/actions/checkout pinned by SHA. The
+# instance resolves short `uses:` against itself, never GitHub, so nothing
+# unreviewed can be pulled in.
+#
+# Jobs run on the runner's `ci-net` network and clone from Gitea's internal
+# address, never through the Cloudflare-proxied public name. Images go to the
+# registry's own DNS-only name (vars.REGISTRY, an org variable).
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ['**']
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The Go binary embeds the built web assets (internal/server/static/dist,
+  # `//go:embed all:dist`), so the frontend build comes first. Its output is
+  # not handed to the Go job: there is no artifact store here, and the Go
+  # checks do not need it -- the committed dist/.gitkeep is enough for the
+  # embed to compile. (The GitLab port passed web/dist as an artifact, but the
+  # build writes to internal/server/static/dist, so its Go job compiled
+  # against the placeholder too.) The image build does its own frontend build
+  # in the Dockerfile.
+  web:
+    runs-on: docker
+    container:
+      image: node:26-bookworm-slim@sha256:582460f614631b59b824ac6020533b9bf339c7fdf3a6d7db31abb6b4065f0212 # 26-bookworm-slim
+    env:
+      NPM_CONFIG_CACHE: ${{ github.workspace }}/.npm
+    steps:
+      - uses: coffey-labs/actions/checkout@fab0c4d45e0162963965f1555df27b7bed5e20ec
+      - working-directory: web
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build
+
+  go:
+    needs: [web]
+    runs-on: docker
+    container:
+      image: golang:1.27-bookworm@sha256:69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195 # 1.27-bookworm
+    steps:
+      - uses: coffey-labs/actions/checkout@fab0c4d45e0162963965f1555df27b7bed5e20ec
+      - run: go vet ./...
+      - run: go test -count=1 ./...
+      # Left as `go run ...@latest`, as the workflow had it: a vulnerability
+      # check wants today's database, not a pinned copy of last month's.
+      - run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  docker-build:
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    needs: [web]
+    runs-on: docker
+    container:
+      image: docker:28-cli@sha256:625d9431a9f54c5a2bc90f24f0e1c3d55b1349fd857dd85035f98c2c9acbdd4d # 28-cli
+      volumes:
+        - /var/run/docker.sock:/var/run/docker.sock
+    steps:
+      - uses: coffey-labs/actions/checkout@fab0c4d45e0162963965f1555df27b7bed5e20ec
+      - run: |
+          tag="ihasvpn:ci-$(echo "$GITHUB_SHA" | cut -c1-8)"
+          docker build -t "$tag" .
+          docker image rm "$tag"
+
+  # The workflow built each platform on its own native runner and joined the
+  # two digests into one tag. There is a single amd64 runner here, so arm64
+  # goes through QEMU instead -- slower, but this is tag-driven and the
+  # alternative is shipping amd64 only, which is what the account suspension
+  # already cost us once. TrueNAS and Unraid users pull arm64.
+  #
+  # The version is the tag without its leading "v". publish.yml used
+  # `git describe --tags --always`, which on a tag build is exactly the tag;
+  # passing the tag with the "v" still on would make /api/health report a
+  # different string from every earlier build.
+  #
+  # web and go run on tags too, so publish waits for both. (In the GitLab port
+  # they were limited to merge requests and main, while publish still needed
+  # them, so a tag pipeline could not be created at all.)
+  #
+  # The push logs in with PACKAGE_TOKEN (jcoffey-dev, write:package): Gitea's
+  # per-job token is refused by the container registry.
+  publish:
+    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    needs: [web, go]
+    runs-on: docker
+    container:
+      image: docker:28-cli@sha256:625d9431a9f54c5a2bc90f24f0e1c3d55b1349fd857dd85035f98c2c9acbdd4d # 28-cli
+      volumes:
+        - /var/run/docker.sock:/var/run/docker.sock
+    env:
+      REGISTRY: ${{ vars.REGISTRY }}
+      IMAGE: ${{ vars.REGISTRY }}/${{ github.repository }}
+      PACKAGE_TOKEN: ${{ secrets.PACKAGE_TOKEN }}
+    steps:
+      - uses: coffey-labs/actions/checkout@fab0c4d45e0162963965f1555df27b7bed5e20ec
+      - run: |
+          test -n "$REGISTRY"
+          echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          echo "$PACKAGE_TOKEN" | docker login -u jcoffey-dev --password-stdin "$REGISTRY"
+          docker run --privileged --rm tonistiigi/binfmt --install arm64
+          docker buildx create --use --name gitea-builder --driver docker-container || docker buildx use gitea-builder
+      - run: |
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --build-arg IHASVPN_VERSION="$VERSION" \
+            --provenance=false --sbom=false \
+            --tag "$IMAGE:$VERSION" \
+            --tag "$IMAGE:latest" \
+            --push .
+          docker buildx imagetools inspect "$IMAGE:$VERSION"
+      # Gitea keeps a container package on its owner; linking it shows it on
+      # the repository's Packages tab. Idempotent.
+      - run: |
+          apk add --no-cache -q curl
+          curl -fsS -o /dev/null -X POST -H "Authorization: token $PACKAGE_TOKEN" \
+            "$CI_SERVER_INTERNAL/api/v1/packages/${GITHUB_REPOSITORY%%/*}/container/${GITHUB_REPOSITORY#*/}/-/link/${GITHUB_REPOSITORY#*/}" \
+            || echo "package already linked (or link refused); not fatal"
+      - if: always()
+        run: docker logout "$REGISTRY" || true
