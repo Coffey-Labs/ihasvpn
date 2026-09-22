@@ -111,6 +111,7 @@ jobs:
       - run: |
           test -n "$REGISTRY"
           echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          test -n "$PACKAGE_TOKEN" || { echo "PACKAGE_TOKEN secret is not set on this repository" >&2; exit 1; }
           echo "$PACKAGE_TOKEN" | docker login -u jcoffey-dev --password-stdin "$REGISTRY"
           docker run --privileged --rm tonistiigi/binfmt --install arm64
           docker buildx create --use --name gitea-builder --driver docker-container || docker buildx use gitea-builder
