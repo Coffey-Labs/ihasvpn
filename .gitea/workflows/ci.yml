@@ -1,6 +1,14 @@
 # CI on the self-hosted Gitea, ported from .gitlab-ci.yml during the move off
 # GitLab (2026-09-22). Gitea reads .gitea/workflows and ignores .github/ once
-# this directory exists; .github/workflows stays as it was for GitHub.
+# this directory exists.
+#
+# BUILD_ON: an org variable, set on both forges. Gitea push-mirrors this
+# repository to GitHub, and with BUILD_ON=github the build jobs here skip and
+# GitHub Actions does the same work on the mirrored copy
+# (.github/workflows/ci.yml, on faster and native-arm64 runners). The `github`
+# job at the end waits for the result that workflow reports back, so this run
+# still passes or fails with the build. Unset, everything builds here as
+# before -- which is also the fallback if GitHub is ever unavailable.
 #
 # This one mattered more than most. ghcr.io/coffey-labs/ihasvpn went dark with
 # the account while the deployment was still pulling from it, and the only
@@ -37,6 +45,7 @@ jobs:
   # against the placeholder too.) The image build does its own frontend build
   # in the Dockerfile.
   web:
+    if: ${{ vars.BUILD_ON != 'github' }}
     runs-on: light
     container:
       image: node:26-bookworm-slim@sha256:582460f614631b59b824ac6020533b9bf339c7fdf3a6d7db31abb6b4065f0212 # 26-bookworm-slim
@@ -50,6 +59,7 @@ jobs:
           npm run build
 
   go:
+    if: ${{ vars.BUILD_ON != 'github' }}
     needs: [web]
     runs-on: light
     container:
@@ -63,7 +73,7 @@ jobs:
       - run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
   docker-build:
-    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    if: ${{ vars.BUILD_ON != 'github' && (!startsWith(github.ref, 'refs/tags/')) }}
     needs: [web]
     runs-on: docker
     container:
@@ -95,7 +105,7 @@ jobs:
   # The push logs in with PACKAGE_TOKEN (jcoffey-dev, write:package): Gitea's
   # per-job token is refused by the container registry.
   publish:
-    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    if: ${{ vars.BUILD_ON != 'github' && (startsWith(github.ref, 'refs/tags/')) }}
     needs: [web, go]
     runs-on: docker
     container:
@@ -133,3 +143,37 @@ jobs:
             || echo "package already linked (or link refused); not fatal"
       - if: always()
         run: docker logout "$REGISTRY" || true
+
+  # ------------------------------------------------------------ github ------
+  # With BUILD_ON=github the jobs above skip and GitHub Actions builds this
+  # commit on the push-mirrored copy (.github/workflows/ci.yml). This job waits
+  # for the commit status that workflow reports back, and passes or fails with
+  # it, so this run -- what pull requests and merges look at -- still carries
+  # the real result. If GitHub never reports, it times out and fails: the cue
+  # to unset BUILD_ON and build here again.
+  github:
+    if: ${{ vars.BUILD_ON == 'github' }}
+    runs-on: light
+    timeout-minutes: 150
+    container:
+      image: node:26-bookworm-slim@sha256:582460f614631b59b824ac6020533b9bf339c7fdf3a6d7db31abb6b4065f0212 # 26-bookworm-slim
+    env:
+      READ_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      CONTEXT: ${{ github.ref_type == 'tag' && 'github/ci (tag)' || 'github/ci (branch)' }}
+    steps:
+      - run: apt-get update -qq && apt-get install -y -qq --no-install-recommends ca-certificates curl jq >/dev/null
+      - shell: bash
+        run: |
+          set -uo pipefail
+          url="${CI_SERVER_INTERNAL}/api/v1/repos/${GITHUB_REPOSITORY}/commits/${SHA}/statuses?limit=50"
+          echo "Waiting for '${CONTEXT}' on ${SHA}"
+          while :; do
+            # The newest status for the context is the one that counts.
+            s="$(curl -fsS -H "Authorization: token ${READ_TOKEN}" "$url" | jq -r --arg c "$CONTEXT" '[.[] | select(.context == $c)] | sort_by(.id) | last | "\(.status) \(.target_url)"' 2>/dev/null)"
+            case "$s" in
+              success\ *) echo "GitHub: ${s}"; exit 0 ;;
+              failure\ *|error\ *) echo "GitHub: ${s}" >&2; exit 1 ;;
+            esac
+            sleep 20
+          done
