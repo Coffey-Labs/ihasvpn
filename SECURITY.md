@@ -8,7 +8,7 @@ patched.
 ## Reporting a vulnerability
 
 **Please do not open a public issue for a security problem.** Email
-**johnellisATlinuxDOTcom** with what you found, how to reproduce it and what
+**securityATcoffeylabsDOTorg** with what you found, how to reproduce it and what
 you think the impact is. You will get an acknowledgement within a few days
 and a fix or a plan before anything is made public.
 
