@@ -7,7 +7,7 @@ export function Legal({ center = false }: { center?: boolean }) {
       <span>
         &copy; {year}{" "}
         <a href="https://coffeylabs.org" target="_blank" rel="noreferrer">
-          CoffeyLabs.org
+          Coffey Labs LLC
         </a>
       </span>
       <span className="legal-sep" aria-hidden="true">
