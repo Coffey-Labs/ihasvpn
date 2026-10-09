@@ -1,6 +1,6 @@
 module github.com/Coffey-Labs/ihasvpn
 
-go 1.27.1
+go 1.27.2
 
 require (
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
@@ -23,7 +23,7 @@ require (
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/vishvananda/netns v0.0.5 // indirect
-	golang.org/x/net v0.58.0 // indirect
+	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	golang.zx2c4.com/wireguard v0.0.0-20231211153847-12269c276173 // indirect
