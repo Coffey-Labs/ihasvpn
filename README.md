@@ -6,7 +6,7 @@
 
 > [!NOTE]
 > Development happens on [git.coffeylabs.org/coffey-labs/ihasvpn](https://git.coffeylabs.org/coffey-labs/ihasvpn); the copy on GitHub is a read-only mirror.
-> Report issues at **[git.coffeylabs.org/coffey-labs/ihasvpn/issues](https://git.coffeylabs.org/coffey-labs/ihasvpn/issues)**, and join discussions at **[community.coffeylabs.org](https://community.coffeylabs.org)**.
+> Report issues at **[git.coffeylabs.org/coffey-labs/ihasvpn/issues](https://git.coffeylabs.org/coffey-labs/ihasvpn/issues)**, join discussions at **[community.coffeylabs.org](https://community.coffeylabs.org)**, or chat on **[Discord](https://discord.gg/nqcY4TKfAn)**.
 
 A self-hosted WireGuard server with a secure web console, in one container.
 
