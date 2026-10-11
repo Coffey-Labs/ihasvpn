@@ -50,6 +50,23 @@ API through `httptest`. A change to the data plane itself (`internal/wg`,
 `internal/netcfg`) needs a run in a container with NET_ADMIN and a real
 client handshake; say in the pull request that you did that.
 
+## Sending a change
+
+New accounts on git.coffeylabs.org can file issues but can't push or fork.
+Until you have repository access, open an
+[issue](https://git.coffeylabs.org/coffey-labs/ihasvpn/issues) for the change, or say hello
+on [community.coffeylabs.org](https://community.coffeylabs.org), and attach the
+change to the issue as a patch:
+
+```sh
+git format-patch origin/main --stdout > my-change.patch
+```
+
+Repository access goes to volunteers we have worked with; a few good issues or
+patches is the usual way in. After that you push a branch here and open a pull
+request. The GitHub copy is a read-only mirror, so pull requests opened
+there are not merged.
+
 ## Pull requests
 
 - One change per pull request, with a description of what and why.
