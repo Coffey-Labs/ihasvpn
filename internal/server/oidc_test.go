@@ -219,12 +219,42 @@ func TestOIDCEmailDomains(t *testing.T) {
 	srv := newOIDCServer(t, f, "example.org")
 	admin := browser(t, srv)
 	admin.expect("POST", "/api/setup", map[string]string{"username": "admin", "password": "a-long-enough-password", "endpointHost": "vpn.test"}, 201)
-	if loc := f.signIn(t, browser(t, srv), "1", "eve@elsewhere.net"); loc != "/?signin=not-allowed" {
+	eve := browser(t, srv)
+	if loc := f.signIn(t, eve, "1", "eve@elsewhere.net"); loc != "/?signin=not-allowed" {
 		t.Fatalf("other domain: %s", loc)
 	}
-	if loc := f.signIn(t, browser(t, srv), "2", "sam@EXAMPLE.org"); loc != "/" {
+	// The sign-in page learns which address was refused and what is allowed.
+	got, ok := refusalFor(t, eve, srv)
+	if !ok || got.Email != "eve@elsewhere.net" || len(got.Domains) != 1 || got.Domains[0] != "example.org" || got.Unverified {
+		t.Fatalf("refusal: %+v %v", got, ok)
+	}
+	sam := browser(t, srv)
+	if loc := f.signIn(t, sam, "2", "sam@EXAMPLE.org"); loc != "/" {
 		t.Fatalf("allowed domain: %s", loc)
 	}
+	if _, ok := refusalFor(t, sam, srv); ok {
+		t.Fatal("refusal cookie set on a successful sign-in")
+	}
+}
+
+func refusalFor(t *testing.T, b *client, srv *httptest.Server) (refusal, bool) {
+	t.Helper()
+	u, _ := url.Parse(srv.URL + "/")
+	for _, c := range b.c.Jar.Cookies(u) {
+		if c.Name != refusalCookie {
+			continue
+		}
+		raw, err := base64.RawURLEncoding.DecodeString(c.Value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var r refusal
+		if err := json.Unmarshal(raw, &r); err != nil {
+			t.Fatal(err)
+		}
+		return r, true
+	}
+	return refusal{}, false
 }
 
 func TestOIDCOff(t *testing.T) {
