@@ -54,12 +54,17 @@ export function UsersPage() {
                 <tr key={u.id}>
                   <td>
                     {u.username} {u.id === me?.id && <span className="badge accent">you</span>}
+                    {u.signIn === "oidc" && (
+                      <span className="badge" style={{ marginLeft: 6 }} title={u.email ? `Signs in through the provider as ${u.email}` : "Signs in through the provider"}>
+                        provider
+                      </span>
+                    )}
                   </td>
                   <td>
                     <span className={`badge ${u.role === "admin" ? "accent" : ""}`}>{u.role}</span>
                   </td>
                   <td className="num">{u.devices}</td>
-                  <td>{u.totpEnabled ? <span className="badge ok">on</span> : <span className="badge">off</span>}</td>
+                  <td>{u.signIn === "oidc" ? <span className="faint small">at the provider</span> : u.totpEnabled ? <span className="badge ok">on</span> : <span className="badge">off</span>}</td>
                   <td>{ago(u.lastLoginAt, now)}</td>
                   <td>{dateTime(u.createdAt)}</td>
                   {isAdmin && (
@@ -237,9 +242,13 @@ function UserEdit({ user, onClose, onSaved }: { user: User; onClose: () => void;
             <option value="user">User (own devices only)</option>
           </select>
         </Field>
-        <Field label="New password" hint="Leave blank to keep it. Setting one signs them out everywhere.">
-          <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={12} autoComplete="new-password" />
-        </Field>
+        {user.signIn === "oidc" ? (
+          <p className="muted small">{user.username} signs in through the provider, so there is no password or second factor to manage here.</p>
+        ) : (
+          <Field label="New password" hint="Leave blank to keep it. Setting one signs them out everywhere.">
+            <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={12} autoComplete="new-password" />
+          </Field>
+        )}
         {user.totpEnabled && (
           <div className="check">
             <input id="reset-totp" type="checkbox" checked={resetTotp} onChange={(e) => setResetTotp(e.target.checked)} />

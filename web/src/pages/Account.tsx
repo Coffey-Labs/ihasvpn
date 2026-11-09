@@ -95,70 +95,83 @@ export function Account() {
           </p>
         </div>
       </div>
-      <div className="grid grid-2">
-        <form className="card" onSubmit={changePassword}>
-          <div className="card-head">
-            <h2>Password</h2>
-          </div>
-          <div className="card-body">
-            {pwError && <div className="error">{pwError}</div>}
-            <Field label="Current password">
-              <input className="input" type="password" value={current} onChange={(e) => setCurrent(e.target.value)} required autoComplete="current-password" />
-            </Field>
-            <Field label="New password" hint="At least 12 characters.">
-              <input className="input" type="password" value={next} onChange={(e) => setNext(e.target.value)} required minLength={12} autoComplete="new-password" />
-            </Field>
-            <Field label="Confirm new password">
-              <input className="input" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required autoComplete="new-password" />
-            </Field>
-            <button className="btn primary" type="submit" disabled={busy}>
-              Change password
-            </button>
-          </div>
-        </form>
+      {me?.signIn === "oidc" ? (
         <div className="card">
           <div className="card-head">
-            <h2>Two-factor authentication</h2>
-            {me?.totpEnabled ? <span className="badge ok">on</span> : <span className="badge">off</span>}
+            <h2>Sign-in</h2>
           </div>
           <div className="card-body">
-            {me?.totpEnabled ? (
-              <>
-                <p>A code from your authenticator app is required at every sign-in.</p>
-                <p className="muted small">
-                  {me.recoveryCodesLeft} recovery code{me.recoveryCodesLeft === 1 ? "" : "s"} left.
-                </p>
-                {!disabling ? (
-                  <button className="btn" onClick={() => setDisabling(true)}>
-                    Turn off
-                  </button>
-                ) : (
-                  <form onSubmit={disableTotp}>
-                    <Field label="Confirm with your password">
-                      <input className="input" type="password" value={disablePw} onChange={(e) => setDisablePw(e.target.value)} required autoComplete="current-password" autoFocus />
-                    </Field>
-                    <div className="btn-row">
-                      <button className="btn danger" type="submit">
-                        Turn off two-factor
-                      </button>
-                      <button className="btn" type="button" onClick={() => setDisabling(false)}>
-                        Cancel
-                      </button>
-                    </div>
-                  </form>
-                )}
-              </>
-            ) : (
-              <>
-                <p>Add a time-based one-time code from an authenticator app (Aegis, Google Authenticator, 1Password, and so on).</p>
-                <button className="btn primary" onClick={startTotp}>
-                  Set up
-                </button>
-              </>
-            )}
+            <p>
+              You sign in through <b>{me.provider}</b>{me.email ? <> as {me.email}</> : null}. Your password and second factor are looked after there, not here.
+            </p>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="grid grid-2">
+          <form className="card" onSubmit={changePassword}>
+            <div className="card-head">
+              <h2>Password</h2>
+            </div>
+            <div className="card-body">
+              {pwError && <div className="error">{pwError}</div>}
+              <Field label="Current password">
+                <input className="input" type="password" value={current} onChange={(e) => setCurrent(e.target.value)} required autoComplete="current-password" />
+              </Field>
+              <Field label="New password" hint="At least 12 characters.">
+                <input className="input" type="password" value={next} onChange={(e) => setNext(e.target.value)} required minLength={12} autoComplete="new-password" />
+              </Field>
+              <Field label="Confirm new password">
+                <input className="input" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required autoComplete="new-password" />
+              </Field>
+              <button className="btn primary" type="submit" disabled={busy}>
+                Change password
+              </button>
+            </div>
+          </form>
+          <div className="card">
+            <div className="card-head">
+              <h2>Two-factor authentication</h2>
+              {me?.totpEnabled ? <span className="badge ok">on</span> : <span className="badge">off</span>}
+            </div>
+            <div className="card-body">
+              {me?.totpEnabled ? (
+                <>
+                  <p>A code from your authenticator app is required at every sign-in.</p>
+                  <p className="muted small">
+                    {me.recoveryCodesLeft} recovery code{me.recoveryCodesLeft === 1 ? "" : "s"} left.
+                  </p>
+                  {!disabling ? (
+                    <button className="btn" onClick={() => setDisabling(true)}>
+                      Turn off
+                    </button>
+                  ) : (
+                    <form onSubmit={disableTotp}>
+                      <Field label="Confirm with your password">
+                        <input className="input" type="password" value={disablePw} onChange={(e) => setDisablePw(e.target.value)} required autoComplete="current-password" autoFocus />
+                      </Field>
+                      <div className="btn-row">
+                        <button className="btn danger" type="submit">
+                          Turn off two-factor
+                        </button>
+                        <button className="btn" type="button" onClick={() => setDisabling(false)}>
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p>Add a time-based one-time code from an authenticator app (Aegis, Google Authenticator, 1Password, and so on).</p>
+                  <button className="btn primary" onClick={startTotp}>
+                    Set up
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       <div className="card mt">
         <div className="card-head">
           <h2>Appearance</h2>

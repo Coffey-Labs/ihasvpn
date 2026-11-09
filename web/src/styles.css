@@ -370,6 +370,8 @@ textarea.input { min-height: 72px; resize: vertical; }
 .auth .card { width: 100%; max-width: 420px; }
 .auth .brand { justify-content: center; padding-bottom: 4px; }
 .auth h1 { text-align: center; margin: 4px 0 16px; }
+.auth .or { display: flex; align-items: center; gap: 10px; margin: 14px 0; color: var(--fg-faint); font-size: 12.5px; }
+.auth .or::before, .auth .or::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
 
 /* Modal */
 .modal-back { position: fixed; inset: 0; background: var(--backdrop); display: grid; place-items: center; padding: 20px; z-index: 50; backdrop-filter: blur(2px); }

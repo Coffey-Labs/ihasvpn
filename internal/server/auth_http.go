@@ -385,10 +385,21 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 // --- account ---------------------------------------------------------------
 
+// signIn says how an account signs in: "password" or "oidc".
+func signIn(u *store.User) string {
+	if u.OIDC() {
+		return "oidc"
+	}
+	return "password"
+}
+
 type meBody struct {
 	ID            int64     `json:"id"`
 	Username      string    `json:"username"`
 	Role          string    `json:"role"`
+	SignIn        string    `json:"signIn"`
+	Provider      string    `json:"provider,omitempty"`
+	Email         string    `json:"email,omitempty"`
 	TOTPEnabled   bool      `json:"totpEnabled"`
 	RecoveryCodes int       `json:"recoveryCodesLeft"`
 	CreatedAt     time.Time `json:"createdAt"`
@@ -397,7 +408,11 @@ type meBody struct {
 
 func (s *Server) meBody(ctx context.Context, u *store.User) meBody {
 	left, _ := s.eng.Store().RecoveryCodesLeft(ctx, u.ID)
-	return meBody{ID: u.ID, Username: u.Username, Role: u.Role, TOTPEnabled: u.TOTPEnabled, RecoveryCodes: left, CreatedAt: u.CreatedAt, LastLoginAt: u.LastLoginAt}
+	provider := ""
+	if u.OIDC() {
+		provider = s.cfg.OIDCName
+	}
+	return meBody{Provider: provider, ID: u.ID, Username: u.Username, Role: u.Role, SignIn: signIn(u), Email: u.Email, TOTPEnabled: u.TOTPEnabled, RecoveryCodes: left, CreatedAt: u.CreatedAt, LastLoginAt: u.LastLoginAt}
 }
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
@@ -415,6 +430,10 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u := userOf(r)
+	if u.OIDC() {
+		writeError(w, http.StatusBadRequest, "you sign in through "+s.cfg.OIDCName+"; change your password there")
+		return
+	}
 	if !auth.VerifyPassword(u.PasswordHash, req.Current) {
 		writeError(w, http.StatusForbidden, "current password is wrong")
 		return
@@ -452,6 +471,10 @@ type totpSetupResponse struct {
 // handleTOTPSetup issues a pending secret; it becomes active on confirm.
 func (s *Server) handleTOTPSetup(w http.ResponseWriter, r *http.Request) {
 	u := userOf(r)
+	if u.OIDC() {
+		writeError(w, http.StatusBadRequest, "you sign in through "+s.cfg.OIDCName+", which looks after your second factor")
+		return
+	}
 	if u.TOTPEnabled {
 		writeError(w, http.StatusConflict, "two-factor authentication is already on")
 		return
@@ -596,13 +619,15 @@ type userBody struct {
 	Username    string    `json:"username"`
 	Role        string    `json:"role"`
 	TOTPEnabled bool      `json:"totpEnabled"`
+	SignIn      string    `json:"signIn"`
+	Email       string    `json:"email,omitempty"`
 	Devices     int       `json:"devices"`
 	CreatedAt   time.Time `json:"createdAt"`
 	LastLoginAt time.Time `json:"lastLoginAt,omitempty"`
 }
 
 func (s *Server) toUserBody(u *store.User) userBody {
-	return userBody{ID: u.ID, Username: u.Username, Role: u.Role, TOTPEnabled: u.TOTPEnabled, Devices: len(s.eng.PeersOwnedBy(u.ID)), CreatedAt: u.CreatedAt, LastLoginAt: u.LastLoginAt}
+	return userBody{ID: u.ID, Username: u.Username, Role: u.Role, TOTPEnabled: u.TOTPEnabled, SignIn: signIn(u), Email: u.Email, Devices: len(s.eng.PeersOwnedBy(u.ID)), CreatedAt: u.CreatedAt, LastLoginAt: u.LastLoginAt}
 }
 
 func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
@@ -703,6 +728,10 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		changes = append(changes, "role "+req.Role)
 	}
 	if req.Password != "" {
+		if target.OIDC() {
+			writeError(w, http.StatusBadRequest, target.Username+" signs in through "+s.cfg.OIDCName+" and has no password here")
+			return
+		}
 		if err := auth.ValidatePassword(req.Password); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
