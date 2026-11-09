@@ -142,6 +142,8 @@ export function PeerDetail({ peer, live, settings, isAdmin, onClose, onChanged, 
                 </dd>
                 <dt>Expires</dt>
                 <dd>{peer.expiresAt ? dateTime(peer.expiresAt) : <span className="faint">never</span>}</dd>
+                <dt>Belongs to</dt>
+                <dd>{peer.owner || <span className="faint">nobody in particular</span>}</dd>
                 <dt>Created</dt>
                 <dd>{dateTime(peer.createdAt)}</dd>
               </dl>

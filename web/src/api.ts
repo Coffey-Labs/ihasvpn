@@ -45,10 +45,16 @@ export async function getText(url: string): Promise<string> {
 
 // --- types ------------------------------------------------------------------
 
+export type Role = "admin" | "viewer" | "user";
+
+// Administrators and viewers see the whole server; a user sees only the
+// devices that belong to them.
+export const isStaff = (role?: Role) => role === "admin" || role === "viewer";
+
 export interface Me {
   id: number;
   username: string;
-  role: "admin" | "viewer";
+  role: Role;
   totpEnabled: boolean;
   recoveryCodesLeft: number;
   createdAt: string;
@@ -83,9 +89,32 @@ export interface Peer {
   expired: boolean;
   expiresAt?: string;
   notes: string;
+  ownerId?: number;
+  owner?: string;
   createdAt: string;
   updatedAt: string;
   live: Live;
+}
+
+// A device as its owner sees it.
+export interface Device {
+  id: string;
+  name: string;
+  ipv4: string;
+  ipv6?: string;
+  serverKeys: boolean;
+  enabled: boolean;
+  expired: boolean;
+  expiresAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  live: Live;
+}
+
+export interface MyDevices {
+  devices: Device[];
+  // null: no limit (administrators).
+  limit: number | null;
 }
 
 export interface PeerInput {
@@ -100,6 +129,8 @@ export interface PeerInput {
   enabled?: boolean;
   expiresAt: string | null;
   notes: string;
+  // Absent keeps the owner; 0 means nobody.
+  ownerId?: number;
 }
 
 export interface Settings {
@@ -113,6 +144,7 @@ export interface Settings {
   clampMSS: boolean;
   presharedKeys: boolean;
   connectedWindow: number;
+  deviceLimit: number;
 }
 
 export interface Totals {
@@ -184,8 +216,9 @@ export interface AuditEntry {
 export interface User {
   id: number;
   username: string;
-  role: "admin" | "viewer";
+  role: Role;
   totpEnabled: boolean;
+  devices: number;
   createdAt: string;
   lastLoginAt?: string;
 }
@@ -215,6 +248,12 @@ export const api = {
   totpDisable: (password: string) => post<{ ok: boolean }>("/api/auth/totp/disable", { password }),
   sessions: () => get<SessionInfo[]>("/api/auth/sessions"),
   revokeSessions: () => post<{ ok: boolean }>("/api/auth/sessions/revoke"),
+
+  myDevices: () => get<MyDevices>("/api/me/devices"),
+  createMyDevice: (body: { name: string; publicKey?: string }) => post<Device & { config: string }>("/api/me/devices", body),
+  rotateMyDevice: (id: string) => post<Device & { config: string }>(`/api/me/devices/${id}/rotate`),
+  deleteMyDevice: (id: string) => del<{ ok: boolean }>(`/api/me/devices/${id}`),
+  myDeviceConfig: (id: string) => getText(`/api/me/devices/${id}/config`),
 
   status: () => get<Status>("/api/status"),
   peers: () => get<Peer[]>("/api/peers"),

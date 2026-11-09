@@ -24,6 +24,10 @@ much they are moving, and a button to cut them off.
   the client brings its own public key and the private key never leaves the
   device. Pin a tunnel address or let ihasvpn allocate one. Set an expiry and the
   peer is disconnected on time. Rotate keys in one click.
+- **Everyone their own devices.** Give someone the user role and they see
+  one page: their own devices. They add one (up to a limit you set), scan its
+  QR code, rotate its keys or delete it, and see nothing else on the server.
+  Delete the account and its devices stop working with it.
 - **Who is connected.** Live status from the interface counters every two
   seconds: endpoint, last handshake, session length, current rate, total
   transfer. Usage history in five-minute buckets, per peer and overall, kept
@@ -36,7 +40,7 @@ much they are moving, and a button to cut them off.
   `wireguard-go` on hosts without the module and tells you so. See
   [docs/performance.md](docs/performance.md).
 - **Locked down.** argon2id passwords, two-factor authentication with
-  recovery codes, viewer and administrator roles, rate-limited login,
+  recovery codes, administrator, viewer and user roles, rate-limited login,
   same-origin enforcement, strict CSP, built-in TLS if you want it, and an
   audit log of every change (including every time a peer's configuration is
   viewed). See [SECURITY.md](SECURITY.md).
@@ -156,7 +160,8 @@ alone for split tunnelling.
 Everything the console does goes through `/api/…` with the session cookie.
 `GET /api/peers`, `POST /api/peers`, `GET /api/peers/{id}/config`,
 `POST /api/peers/{id}/disable` and friends are stable enough to script
-against; the shapes are in `internal/server/api.go`. A cross-site request
+against; the shapes are in `internal/server/api.go`. A signed-in person's own
+devices live under `/api/me/devices` (`internal/server/devices.go`). A cross-site request
 without a same-origin `Sec-Fetch-Site` or `Origin` header is refused, so
 call it from the same origin or from a non-browser client.
 
