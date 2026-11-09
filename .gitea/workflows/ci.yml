@@ -63,7 +63,7 @@ jobs:
     needs: [web]
     runs-on: light
     container:
-      image: golang:1.27-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61 # 1.27-bookworm
+      image: golang:1.27-bookworm@sha256:dc0963f32053e4bc451d24d87e3892d42d01021b61f093e98eb95c0352bb84b0 # 1.27-bookworm
     steps:
       - uses: coffey-labs/actions/checkout@fab0c4d45e0162963965f1555df27b7bed5e20ec
       - run: go vet ./...
