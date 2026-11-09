@@ -137,6 +137,40 @@ func (s *Store) migrate(ctx context.Context) error {
 	if _, err := s.db.ExecContext(ctx, schema); err != nil {
 		return fmt.Errorf("apply schema: %w", err)
 	}
+	// Columns added after the first release. CREATE TABLE IF NOT EXISTS
+	// leaves an existing table alone, so they are added here, once.
+	if err := s.addColumn(ctx, "peers", "owner_id", "INTEGER REFERENCES users(id) ON DELETE SET NULL"); err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS peers_owner ON peers(owner_id)`); err != nil {
+		return fmt.Errorf("apply schema: %w", err)
+	}
+	return nil
+}
+
+// addColumn adds a column unless the table already has it.
+func (s *Store) addColumn(ctx context.Context, table, column, decl string) error {
+	rows, err := s.db.QueryContext(ctx, `SELECT name FROM pragma_table_info(?)`, table)
+	if err != nil {
+		return fmt.Errorf("read %s columns: %w", table, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return err
+		}
+		if name == column {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	rows.Close()
+	if _, err := s.db.ExecContext(ctx, `ALTER TABLE `+table+` ADD COLUMN `+column+` `+decl); err != nil {
+		return fmt.Errorf("add %s.%s: %w", table, column, err)
+	}
 	return nil
 }
 

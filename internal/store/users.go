@@ -10,7 +10,8 @@ import (
 // ErrNotFound is returned when a row does not exist.
 var ErrNotFound = errors.New("not found")
 
-// User is an administrator account.
+// User is an account that can sign in: an administrator, a viewer, or a
+// user who looks after their own devices.
 type User struct {
 	ID           int64
 	Username     string

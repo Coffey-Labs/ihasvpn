@@ -28,17 +28,20 @@ type Peer struct {
 	TxTotal      int64
 	LastHandshake time.Time
 	LastEndpoint string
+	// OwnerID is the user the device belongs to; 0 means nobody in
+	// particular (an administrator looks after it).
+	OwnerID int64
 }
 
-const peerCols = `id, name, public_key, private_key, preshared_key, ipv4, ipv6, client_routes, dns, keepalive, mtu, enabled, expires_at, notes, created_at, updated_at, rx_total, tx_total, last_handshake, last_endpoint`
+const peerCols = `id, name, public_key, private_key, preshared_key, ipv4, ipv6, client_routes, dns, keepalive, mtu, enabled, expires_at, notes, created_at, updated_at, rx_total, tx_total, last_handshake, last_endpoint, owner_id`
 
 func scanPeer(row interface{ Scan(...any) error }) (*Peer, error) {
 	var p Peer
 	var priv, psk, v6 sql.NullString
 	var enabled int
 	var exp, created, updated int64
-	var expN, hsN sql.NullInt64
-	if err := row.Scan(&p.ID, &p.Name, &p.PublicKey, &priv, &psk, &p.IPv4, &v6, &p.ClientRoutes, &p.DNS, &p.Keepalive, &p.MTU, &enabled, &expN, &p.Notes, &created, &updated, &p.RxTotal, &p.TxTotal, &hsN, &p.LastEndpoint); err != nil {
+	var expN, hsN, ownerN sql.NullInt64
+	if err := row.Scan(&p.ID, &p.Name, &p.PublicKey, &priv, &psk, &p.IPv4, &v6, &p.ClientRoutes, &p.DNS, &p.Keepalive, &p.MTU, &enabled, &expN, &p.Notes, &created, &updated, &p.RxTotal, &p.TxTotal, &hsN, &p.LastEndpoint, &ownerN); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrNotFound
 		}
@@ -49,6 +52,7 @@ func scanPeer(row interface{ Scan(...any) error }) (*Peer, error) {
 	p.PresharedKey = psk.String
 	p.IPv6 = v6.String
 	p.Enabled = enabled == 1
+	p.OwnerID = ownerN.Int64
 	if expN.Valid {
 		p.ExpiresAt = time.Unix(expN.Int64, 0)
 	}
@@ -74,6 +78,13 @@ func nullTime(t time.Time) any {
 	return t.Unix()
 }
 
+func nullID(id int64) any {
+	if id == 0 {
+		return nil
+	}
+	return id
+}
+
 func boolInt(b bool) int {
 	if b {
 		return 1
@@ -85,16 +96,16 @@ func boolInt(b bool) int {
 func (s *Store) CreatePeer(ctx context.Context, p *Peer) error {
 	now := time.Now()
 	p.CreatedAt, p.UpdatedAt = now, now
-	_, err := s.db.ExecContext(ctx, `INSERT INTO peers(`+peerCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		p.ID, p.Name, p.PublicKey, nullStr(p.PrivateKey), nullStr(p.PresharedKey), p.IPv4, nullStr(p.IPv6), p.ClientRoutes, p.DNS, p.Keepalive, p.MTU, boolInt(p.Enabled), nullTime(p.ExpiresAt), p.Notes, now.Unix(), now.Unix(), p.RxTotal, p.TxTotal, nullTime(p.LastHandshake), p.LastEndpoint)
+	_, err := s.db.ExecContext(ctx, `INSERT INTO peers(`+peerCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		p.ID, p.Name, p.PublicKey, nullStr(p.PrivateKey), nullStr(p.PresharedKey), p.IPv4, nullStr(p.IPv6), p.ClientRoutes, p.DNS, p.Keepalive, p.MTU, boolInt(p.Enabled), nullTime(p.ExpiresAt), p.Notes, now.Unix(), now.Unix(), p.RxTotal, p.TxTotal, nullTime(p.LastHandshake), p.LastEndpoint, nullID(p.OwnerID))
 	return err
 }
 
 // UpdatePeer writes every editable column of a peer.
 func (s *Store) UpdatePeer(ctx context.Context, p *Peer) error {
 	p.UpdatedAt = time.Now()
-	_, err := s.db.ExecContext(ctx, `UPDATE peers SET name=?, public_key=?, private_key=?, preshared_key=?, ipv4=?, ipv6=?, client_routes=?, dns=?, keepalive=?, mtu=?, enabled=?, expires_at=?, notes=?, updated_at=? WHERE id=?`,
-		p.Name, p.PublicKey, nullStr(p.PrivateKey), nullStr(p.PresharedKey), p.IPv4, nullStr(p.IPv6), p.ClientRoutes, p.DNS, p.Keepalive, p.MTU, boolInt(p.Enabled), nullTime(p.ExpiresAt), p.Notes, p.UpdatedAt.Unix(), p.ID)
+	_, err := s.db.ExecContext(ctx, `UPDATE peers SET name=?, public_key=?, private_key=?, preshared_key=?, ipv4=?, ipv6=?, client_routes=?, dns=?, keepalive=?, mtu=?, enabled=?, expires_at=?, notes=?, updated_at=?, owner_id=? WHERE id=?`,
+		p.Name, p.PublicKey, nullStr(p.PrivateKey), nullStr(p.PresharedKey), p.IPv4, nullStr(p.IPv6), p.ClientRoutes, p.DNS, p.Keepalive, p.MTU, boolInt(p.Enabled), nullTime(p.ExpiresAt), p.Notes, p.UpdatedAt.Unix(), nullID(p.OwnerID), p.ID)
 	return err
 }
 

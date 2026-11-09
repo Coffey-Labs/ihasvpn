@@ -1,19 +1,21 @@
 import type { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { Activity, ClipboardList, LayoutDashboard, Settings, Users } from "lucide-react";
-import { useLive } from "../state";
+import { Activity, ClipboardList, LayoutDashboard, Settings, Smartphone, Users } from "lucide-react";
+import { isStaff } from "../api";
+import { useAuth, useLive } from "../state";
 import { Mark } from "./Mark";
 import { ThemeToggle } from "./ThemeSwitch";
 import { UserMenu } from "./UserMenu";
 import { Legal } from "./Legal";
 
 // Account is reached through the user menu, so it is not a nav item.
-const groups = [
+const staffGroups = [
   {
     label: "Overview",
     items: [
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
       { href: "/peers", label: "Peers", icon: Activity },
+      { href: "/devices", label: "My devices", icon: Smartphone },
     ],
   },
   {
@@ -25,7 +27,8 @@ const groups = [
     ],
   },
 ];
-const all = groups.flatMap((g) => g.items);
+// A user has one page: their devices, which is also their home.
+const userGroups = [{ label: "Overview", items: [{ href: "/", label: "My devices", icon: Smartphone }] }];
 
 function isActive(href: string, location: string) {
   return href === "/" ? location === "/" : location.startsWith(href);
@@ -42,16 +45,20 @@ function LivePill() {
 
 export function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
+  const { me } = useAuth();
+  const staff = isStaff(me?.role);
+  const groups = staff ? staffGroups : userGroups;
+  const tabs = groups.flatMap((g) => g.items);
   return (
     <div className="shell">
       {/* Phones and narrow windows: brand and account controls up top. */}
       <header className="topbar">
-        <Link href="/" className="brand" aria-label="ihasvpn dashboard">
+        <Link href="/" className="brand" aria-label="ihasvpn home">
           <Mark size={30} />
           <span className="brand-name">ihasvpn</span>
         </Link>
         <div className="topbar-right">
-          <LivePill />
+          {staff && <LivePill />}
           <ThemeToggle />
           <UserMenu placement="down" />
         </div>
@@ -59,7 +66,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
       {/* Desktop: everything lives in the sidebar. */}
       <aside className="sidebar">
-        <Link href="/" className="brand" aria-label="ihasvpn dashboard">
+        <Link href="/" className="brand" aria-label="ihasvpn home">
           <Mark size={34} />
           <span>
             <span className="brand-name">ihasvpn</span>
@@ -84,7 +91,7 @@ export function Layout({ children }: { children: ReactNode }) {
         </nav>
         <div className="sidebar-foot">
           <div className="sidebar-tools">
-            <LivePill />
+            {staff && <LivePill />}
             <ThemeToggle />
           </div>
           <UserMenu placement="up" showName />
@@ -98,7 +105,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
       {/* Phones: primary navigation as a tab bar within thumb reach. */}
       <nav className="tabbar" aria-label="Main">
-        {all.map((it) => {
+        {tabs.map((it) => {
           const Icon = it.icon;
           const active = isActive(it.href, location);
           return (

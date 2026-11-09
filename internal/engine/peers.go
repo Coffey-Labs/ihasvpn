@@ -34,6 +34,9 @@ type PeerInput struct {
 	Enabled      *bool  `json:"enabled"`
 	ExpiresAt    *time.Time `json:"expiresAt"`
 	Notes        string `json:"notes"`
+	// OwnerID hands the device to a user. Absent leaves it as it is; 0 means
+	// it belongs to nobody in particular.
+	OwnerID *int64 `json:"ownerId,omitempty"`
 }
 
 // ErrValidation marks user errors so the API can answer 400.
@@ -74,6 +77,49 @@ func (e *Engine) Peers() []*store.Peer {
 		return out[i].ID < out[j].ID
 	})
 	return out
+}
+
+// PeersOwnedBy returns copies of a user's devices, newest first.
+func (e *Engine) PeersOwnedBy(userID int64) []*store.Peer {
+	var out []*store.Peer
+	for _, p := range e.Peers() {
+		if p.OwnerID == userID {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// DeletePeersOwnedBy removes every device a user has, for when the user is
+// deleted: their devices must stop working with them. It returns how many
+// went.
+func (e *Engine) DeletePeersOwnedBy(ctx context.Context, userID int64) (int, error) {
+	n := 0
+	for _, p := range e.PeersOwnedBy(userID) {
+		if err := e.DeletePeer(ctx, p.ID); err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
+}
+
+// checkOwner resolves an owner from the API: nil keeps cur, 0 clears it, and
+// anything else must be an existing user.
+func (e *Engine) checkOwner(ctx context.Context, in *int64, cur int64) (int64, error) {
+	if in == nil {
+		return cur, nil
+	}
+	if *in == 0 {
+		return 0, nil
+	}
+	if _, err := e.st.UserByID(ctx, *in); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return 0, invalid("owner: no such user")
+		}
+		return 0, err
+	}
+	return *in, nil
 }
 
 // Live returns the live state for a peer.
@@ -175,6 +221,9 @@ func (e *Engine) CreatePeer(ctx context.Context, in PeerInput) (*store.Peer, err
 	if err := applyEditable(p, in, settings); err != nil {
 		return nil, err
 	}
+	if p.OwnerID, err = e.checkOwner(ctx, in.OwnerID, 0); err != nil {
+		return nil, err
+	}
 	if err := e.st.CreatePeer(ctx, p); err != nil {
 		return nil, err
 	}
@@ -248,6 +297,9 @@ func (e *Engine) UpdatePeer(ctx context.Context, id string, in PeerInput) (*stor
 	}
 	p.Name = name
 	if err := applyEditable(&p, in, e.Settings()); err != nil {
+		return nil, err
+	}
+	if p.OwnerID, err = e.checkOwner(ctx, in.OwnerID, p.OwnerID); err != nil {
 		return nil, err
 	}
 	if err := e.st.UpdatePeer(ctx, &p); err != nil {

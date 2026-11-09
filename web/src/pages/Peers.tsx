@@ -55,7 +55,7 @@ export function Peers() {
     return peers
       .map((p) => ({ p, l: snapshot?.peers[p.id] ?? p.live }))
       .filter(({ p, l }) => {
-        if (q && !(p.name.toLowerCase().includes(q) || p.ipv4.includes(q) || (p.ipv6 ?? "").includes(q) || p.publicKey.toLowerCase().startsWith(q) || (l.endpoint ?? "").includes(q) || p.notes.toLowerCase().includes(q))) return false;
+        if (q && !(p.name.toLowerCase().includes(q) || p.ipv4.includes(q) || (p.ipv6 ?? "").includes(q) || p.publicKey.toLowerCase().startsWith(q) || (l.endpoint ?? "").includes(q) || p.notes.toLowerCase().includes(q) || (p.owner ?? "").toLowerCase().includes(q))) return false;
         switch (filter) {
           case "connected":
             return l.connected;
@@ -98,7 +98,7 @@ export function Peers() {
         <div className="toolbar">
           <div className="search-wrap" style={{ position: "relative" }}>
             <Search size={14} style={{ position: "absolute", left: 9, top: 10, color: "var(--fg-faint)" }} />
-            <input className="input search" style={{ paddingLeft: 28 }} placeholder="Search name, address, key…" value={query} onChange={(e) => setQuery(e.target.value)} />
+            <input className="input search" style={{ paddingLeft: 28 }} placeholder="Search name, owner, address, key…" value={query} onChange={(e) => setQuery(e.target.value)} />
           </div>
           <Segmented
             value={filter}
@@ -146,6 +146,7 @@ export function Peers() {
                         {!p.enabled && <span className="badge bad" style={{ marginLeft: 8 }}>disabled</span>}
                         {p.enabled && p.expired && <span className="badge warn" style={{ marginLeft: 8 }}>expired</span>}
                         {!p.serverKeys && <span className="badge" style={{ marginLeft: 8 }} title="The client holds its own private key">client key</span>}
+                        {p.owner && <span className="small faint" style={{ marginLeft: 8 }}>{p.owner}</span>}
                       </td>
                       <td className="mono nowrap">{p.ipv4}</td>
                       <td className="mono nowrap hide-md">{l.endpoint || <span className="faint">—</span>}</td>

@@ -43,16 +43,41 @@ type peerBody struct {
 	Expired      bool       `json:"expired"`
 	ExpiresAt    *time.Time `json:"expiresAt,omitempty"`
 	Notes        string     `json:"notes"`
+	OwnerID      int64      `json:"ownerId,omitempty"`
+	Owner        string     `json:"owner,omitempty"`
 	CreatedAt    time.Time  `json:"createdAt"`
 	UpdatedAt    time.Time  `json:"updatedAt"`
 	Live         engine.Live `json:"live"`
+}
+
+// ownerNames maps user ids to usernames, for showing who a device belongs to.
+func (s *Server) ownerNames(r *http.Request) map[int64]string {
+	names := map[int64]string{}
+	users, err := s.eng.Store().ListUsers(r.Context())
+	if err != nil {
+		s.log.Warn("list users", "error", err)
+		return names
+	}
+	for _, u := range users {
+		names[u.ID] = u.Username
+	}
+	return names
+}
+
+// toPeerBodyFor is toPeerBody with the owner's name filled in.
+func (s *Server) toPeerBodyFor(r *http.Request, p *store.Peer) peerBody {
+	b := s.toPeerBody(p)
+	if p.OwnerID != 0 {
+		b.Owner = s.ownerNames(r)[p.OwnerID]
+	}
+	return b
 }
 
 func (s *Server) toPeerBody(p *store.Peer) peerBody {
 	b := peerBody{
 		ID: p.ID, Name: p.Name, PublicKey: p.PublicKey, ServerKeys: p.PrivateKey != "", PresharedKey: p.PresharedKey != "",
 		IPv4: p.IPv4, IPv6: p.IPv6, ClientRoutes: p.ClientRoutes, DNS: p.DNS, Keepalive: p.Keepalive, MTU: p.MTU,
-		Enabled: p.Enabled, Notes: p.Notes, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
+		Enabled: p.Enabled, Notes: p.Notes, OwnerID: p.OwnerID, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
 	}
 	if !p.ExpiresAt.IsZero() {
 		t := p.ExpiresAt
@@ -69,9 +94,12 @@ func (s *Server) toPeerBody(p *store.Peer) peerBody {
 
 func (s *Server) handlePeers(w http.ResponseWriter, r *http.Request) {
 	peers := s.eng.Peers()
+	names := s.ownerNames(r)
 	out := make([]peerBody, 0, len(peers))
 	for _, p := range peers {
-		out = append(out, s.toPeerBody(p))
+		b := s.toPeerBody(p)
+		b.Owner = names[p.OwnerID]
+		out = append(out, b)
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -82,7 +110,7 @@ func (s *Server) handlePeer(w http.ResponseWriter, r *http.Request) {
 		engineError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, s.toPeerBody(p))
+	writeJSON(w, http.StatusOK, s.toPeerBodyFor(r, p))
 }
 
 type createPeerResponse struct {
@@ -101,7 +129,7 @@ func (s *Server) handleCreatePeer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.audit(r, "peer.created", p.Name, fmt.Sprintf("%s %s", p.ID, p.IPv4))
-	writeJSON(w, http.StatusCreated, createPeerResponse{peerBody: s.toPeerBody(p), Config: s.eng.ClientConfig(p)})
+	writeJSON(w, http.StatusCreated, createPeerResponse{peerBody: s.toPeerBodyFor(r, p), Config: s.eng.ClientConfig(p)})
 }
 
 func (s *Server) handleUpdatePeer(w http.ResponseWriter, r *http.Request) {
@@ -115,7 +143,7 @@ func (s *Server) handleUpdatePeer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.audit(r, "peer.updated", p.Name, p.ID)
-	writeJSON(w, http.StatusOK, s.toPeerBody(p))
+	writeJSON(w, http.StatusOK, s.toPeerBodyFor(r, p))
 }
 
 func (s *Server) handleDeletePeer(w http.ResponseWriter, r *http.Request) {
@@ -177,7 +205,7 @@ func (s *Server) handleRotatePeer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.audit(r, "peer.keys_rotated", p.Name, p.ID)
-	writeJSON(w, http.StatusOK, createPeerResponse{peerBody: s.toPeerBody(p), Config: s.eng.ClientConfig(p)})
+	writeJSON(w, http.StatusOK, createPeerResponse{peerBody: s.toPeerBodyFor(r, p), Config: s.eng.ClientConfig(p)})
 }
 
 func safeFilename(name string) string {
@@ -358,7 +386,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !allowed {
-		if u, sess := s.loadSession(r); u != nil && !sess.TOTPPending {
+		if u, sess := s.loadSession(r); u != nil && !sess.TOTPPending && isStaff(u) {
 			allowed = true
 		}
 	}

@@ -36,6 +36,9 @@ type Settings struct {
 	// ConnectedWindow is how many seconds since the last handshake still
 	// counts as connected. WireGuard rejects sessions after 180 s.
 	ConnectedWindow int `json:"connectedWindow"`
+	// DeviceLimit is how many devices a user may add for themselves. 0 means
+	// only an administrator adds devices. Administrators are not limited.
+	DeviceLimit int `json:"deviceLimit"`
 }
 
 // DefaultSettings returns what a fresh install starts with.
@@ -51,6 +54,7 @@ func DefaultSettings(endpointHost, dns string, port int) Settings {
 		ClampMSS:        true,
 		PresharedKeys:   true,
 		ConnectedWindow: 180,
+		DeviceLimit:     5,
 	}
 }
 
@@ -82,6 +86,9 @@ func (s *Settings) Validate() error {
 	}
 	if s.ConnectedWindow < 30 || s.ConnectedWindow > 3600 {
 		errs = append(errs, errors.New("connected window must be 30-3600 seconds"))
+	}
+	if s.DeviceLimit < 0 || s.DeviceLimit > 1000 {
+		errs = append(errs, errors.New("device limit must be 0-1000"))
 	}
 	return errors.Join(errs...)
 }
@@ -152,7 +159,9 @@ func loadSettings(ctx context.Context, st *store.Store) (*Settings, bool, error)
 	if raw == "" {
 		return nil, false, nil
 	}
-	var s Settings
+	// Start from the defaults so a setting added after this row was saved
+	// gets its default rather than zero.
+	s := DefaultSettings("", "", 0)
 	if err := json.Unmarshal([]byte(raw), &s); err != nil {
 		return nil, false, fmt.Errorf("settings are corrupt: %w", err)
 	}

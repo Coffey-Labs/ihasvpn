@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -95,6 +96,20 @@ func (s *Server) authed(next http.HandlerFunc) http.Handler {
 		next(w, r.WithContext(ctx))
 	})
 }
+
+// staff requires an administrator or a viewer: the people who may see the
+// whole server. A user sees only their own devices.
+func (s *Server) staff(next http.HandlerFunc) http.Handler {
+	return s.authed(func(w http.ResponseWriter, r *http.Request) {
+		if !isStaff(userOf(r)) {
+			writeError(w, http.StatusForbidden, "administrator or viewer role required")
+			return
+		}
+		next(w, r)
+	})
+}
+
+func isStaff(u *store.User) bool { return u.Role == "admin" || u.Role == "viewer" }
 
 // admin additionally requires the admin role.
 func (s *Server) admin(next http.HandlerFunc) http.Handler {
@@ -581,12 +596,13 @@ type userBody struct {
 	Username    string    `json:"username"`
 	Role        string    `json:"role"`
 	TOTPEnabled bool      `json:"totpEnabled"`
+	Devices     int       `json:"devices"`
 	CreatedAt   time.Time `json:"createdAt"`
 	LastLoginAt time.Time `json:"lastLoginAt,omitempty"`
 }
 
-func toUserBody(u *store.User) userBody {
-	return userBody{ID: u.ID, Username: u.Username, Role: u.Role, TOTPEnabled: u.TOTPEnabled, CreatedAt: u.CreatedAt, LastLoginAt: u.LastLoginAt}
+func (s *Server) toUserBody(u *store.User) userBody {
+	return userBody{ID: u.ID, Username: u.Username, Role: u.Role, TOTPEnabled: u.TOTPEnabled, Devices: len(s.eng.PeersOwnedBy(u.ID)), CreatedAt: u.CreatedAt, LastLoginAt: u.LastLoginAt}
 }
 
 func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
@@ -597,7 +613,7 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]userBody, 0, len(users))
 	for _, u := range users {
-		out = append(out, toUserBody(u))
+		out = append(out, s.toUserBody(u))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -608,7 +624,9 @@ type userRequest struct {
 	Role     string `json:"role"`
 }
 
-func validRole(role string) bool { return role == "admin" || role == "viewer" }
+func validRole(role string) bool { return role == "admin" || role == "viewer" || role == "user" }
+
+const roleHint = "role must be admin, viewer or user"
 
 func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	var req userRequest
@@ -621,7 +639,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !validRole(req.Role) {
-		writeError(w, http.StatusBadRequest, "role must be admin or viewer")
+		writeError(w, http.StatusBadRequest, roleHint)
 		return
 	}
 	if err := auth.ValidatePassword(req.Password); err != nil {
@@ -643,7 +661,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.audit(r, "user.created", u.Username, "role "+u.Role)
-	writeJSON(w, http.StatusCreated, toUserBody(u))
+	writeJSON(w, http.StatusCreated, s.toUserBody(u))
 }
 
 type userUpdateRequest struct {
@@ -671,7 +689,7 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 	var changes []string
 	if req.Role != "" && req.Role != target.Role {
 		if !validRole(req.Role) {
-			writeError(w, http.StatusBadRequest, "role must be admin or viewer")
+			writeError(w, http.StatusBadRequest, roleHint)
 			return
 		}
 		if target.ID == userOf(r).ID {
@@ -713,7 +731,7 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		s.audit(r, "user.updated", target.Username, strings.Join(changes, ", "))
 	}
 	u, _ := s.eng.Store().UserByID(ctx, id)
-	writeJSON(w, http.StatusOK, toUserBody(u))
+	writeJSON(w, http.StatusOK, s.toUserBody(u))
 }
 
 func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
@@ -736,10 +754,20 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// Their devices go first: a deleted person's phone must not keep working.
+	devices, err := s.eng.DeletePeersOwnedBy(ctx, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	if err := s.eng.Store().DeleteUser(ctx, id); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	s.audit(r, "user.deleted", target.Username, "")
+	detail := ""
+	if devices > 0 {
+		detail = fmt.Sprintf("%d device(s) deleted with them", devices)
+	}
+	s.audit(r, "user.deleted", target.Username, detail)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

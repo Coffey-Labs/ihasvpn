@@ -94,6 +94,16 @@ export function SettingsPage() {
             </Field>
           </div>
         </div>
+        <div className="card">
+          <div className="card-head">
+            <h2>People's own devices</h2>
+          </div>
+          <div className="card-body">
+            <Field label="Devices per user" hint="How many devices someone with the user role can add for themselves under My devices. 0 means only an administrator adds them. Administrators have no limit.">
+              <input className="input" type="number" min={0} max={1000} value={s.deviceLimit} onChange={(e) => set("deviceLimit", Number(e.target.value))} disabled={readOnly} required style={{ maxWidth: 160 }} />
+            </Field>
+          </div>
+        </div>
         {!readOnly && (
           <div>
             <button className="btn primary" type="submit" disabled={busy}>

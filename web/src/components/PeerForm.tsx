@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from "react";
-import { api, type Peer, type PeerInput, type Settings } from "../api";
+import { useEffect, useState, type FormEvent } from "react";
+import { api, type Peer, type PeerInput, type Settings, type User } from "../api";
 import { fromLocalInput, toLocalInput } from "../format";
 import { errorMessage } from "../state";
 import { Check, Field, Modal } from "./ui";
@@ -20,6 +20,11 @@ export function PeerForm({ peer, settings, onClose, onSaved }: { peer?: Peer; se
   const [expires, setExpires] = useState(toLocalInput(peer?.expiresAt));
   const [notes, setNotes] = useState(peer?.notes ?? "");
   const [enabled, setEnabled] = useState(peer?.enabled ?? true);
+  const [ownerId, setOwnerId] = useState(peer?.ownerId ?? 0);
+  const [users, setUsers] = useState<User[]>([]);
+  useEffect(() => {
+    api.users().then(setUsers).catch(() => {});
+  }, []);
   const [advanced, setAdvanced] = useState(editing);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -37,6 +42,7 @@ export function PeerForm({ peer, settings, onClose, onSaved }: { peer?: Peer; se
       enabled,
       expiresAt: expires ? fromLocalInput(expires) : "1970-01-01T00:00:00Z",
       notes,
+      ownerId,
     };
     if (!editing) {
       if (keyMode === "client") body.publicKey = publicKey.trim();
@@ -72,6 +78,16 @@ export function PeerForm({ peer, settings, onClose, onSaved }: { peer?: Peer; se
         {error && <div className="error">{error}</div>}
         <Field label="Name" hint="A device or a person: “Laptop”, “Phone”, “Office router”.">
           <input className="input" autoFocus value={name} onChange={(e) => setName(e.target.value)} required maxLength={64} />
+        </Field>
+        <Field label="Belongs to" hint="Its owner sees it under My devices and can set it up, rotate its keys or delete it.">
+          <select className="input" value={ownerId} onChange={(e) => setOwnerId(Number(e.target.value))}>
+            <option value={0}>Nobody in particular</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.username}
+              </option>
+            ))}
+          </select>
         </Field>
         {!editing && (
           <div className="field">

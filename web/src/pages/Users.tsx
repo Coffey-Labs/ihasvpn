@@ -27,7 +27,7 @@ export function UsersPage() {
       <div className="page-head">
         <div>
           <h1>Users</h1>
-          <p>Administrators manage everything; viewers can look but not touch.</p>
+          <p>Administrators manage everything, viewers can look but not touch, and users see only their own devices.</p>
         </div>
         {isAdmin && (
           <button className="btn primary" onClick={() => setCreating(true)}>
@@ -42,6 +42,7 @@ export function UsersPage() {
               <tr>
                 <th>Username</th>
                 <th>Role</th>
+                <th>Devices</th>
                 <th>Two-factor</th>
                 <th>Last sign-in</th>
                 <th>Created</th>
@@ -57,6 +58,7 @@ export function UsersPage() {
                   <td>
                     <span className={`badge ${u.role === "admin" ? "accent" : ""}`}>{u.role}</span>
                   </td>
+                  <td className="num">{u.devices}</td>
                   <td>{u.totpEnabled ? <span className="badge ok">on</span> : <span className="badge">off</span>}</td>
                   <td>{ago(u.lastLoginAt, now)}</td>
                   <td>{dateTime(u.createdAt)}</td>
@@ -121,7 +123,14 @@ export function UsersPage() {
           }}
           text={
             <>
-              Delete <b>{deleting.username}</b>? Their sessions end immediately.
+              Delete <b>{deleting.username}</b>? Their sessions end immediately
+              {deleting.devices > 0 ? (
+                <>
+                  , and their {deleting.devices === 1 ? "device is" : `${deleting.devices} devices are`} deleted with them and stop working.
+                </>
+              ) : (
+                "."
+              )}
             </>
           }
         />
@@ -133,7 +142,7 @@ export function UsersPage() {
 function UserForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("admin");
+  const [role, setRole] = useState("user");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   async function submit(e: FormEvent) {
@@ -176,6 +185,7 @@ function UserForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => vo
           <select className="input" value={role} onChange={(e) => setRole(e.target.value)}>
             <option value="admin">Administrator</option>
             <option value="viewer">Viewer (read-only)</option>
+            <option value="user">User (own devices only)</option>
           </select>
         </Field>
       </form>
@@ -224,6 +234,7 @@ function UserEdit({ user, onClose, onSaved }: { user: User; onClose: () => void;
           <select className="input" value={role} onChange={(e) => setRole(e.target.value as User["role"])} disabled={user.id === me?.id}>
             <option value="admin">Administrator</option>
             <option value="viewer">Viewer (read-only)</option>
+            <option value="user">User (own devices only)</option>
           </select>
         </Field>
         <Field label="New password" hint="Leave blank to keep it. Setting one signs them out everywhere.">

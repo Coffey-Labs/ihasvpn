@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { api, ApiError, type Me, type Snapshot } from "./api";
+import { api, ApiError, isStaff, type Me, type Snapshot } from "./api";
 
 // --- auth -------------------------------------------------------------------
 
@@ -76,8 +76,10 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   const [peersVersion, setPeersVersion] = useState(0);
   const [settingsVersion, setSettingsVersion] = useState(0);
 
+  // Live updates cover the whole server, so only staff get them.
+  const staff = !!me && isStaff(me.role);
   useEffect(() => {
-    if (!me) {
+    if (!staff) {
       setSnapshot(null);
       setConnected(false);
       return;
@@ -95,7 +97,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     es.addEventListener("peers", () => setPeersVersion((v) => v + 1));
     es.addEventListener("settings", () => setSettingsVersion((v) => v + 1));
     return () => es.close();
-  }, [me]);
+  }, [staff]);
 
   const value = useMemo(() => ({ snapshot, connected, peersVersion, settingsVersion }), [snapshot, connected, peersVersion, settingsVersion]);
   return <LiveCtx.Provider value={value}>{children}</LiveCtx.Provider>;

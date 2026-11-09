@@ -15,6 +15,7 @@ import (
 	"net/netip"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Coffey-Labs/ihasvpn/internal/auth"
@@ -32,6 +33,8 @@ type Server struct {
 	ipLimit *auth.Limiter
 	usrLimit *auth.Limiter
 	http    *http.Server
+	// deviceMu makes a user's limit check and device creation one step.
+	deviceMu sync.Mutex
 }
 
 // New builds the router.
@@ -126,18 +129,27 @@ func (s *Server) routes() {
 	m.Handle("GET /api/auth/sessions", s.authed(s.handleSessions))
 	m.Handle("POST /api/auth/sessions/revoke", s.authed(s.handleRevokeSessions))
 
-	m.Handle("GET /api/status", s.authed(s.handleStatus))
-	m.Handle("GET /api/events", s.authed(s.handleEvents))
-	m.Handle("GET /api/peers", s.authed(s.handlePeers))
-	m.Handle("GET /api/peers/{id}", s.authed(s.handlePeer))
-	m.Handle("GET /api/peers/{id}/config", s.authed(s.handlePeerConfig))
-	m.Handle("GET /api/peers/{id}/qr.png", s.authed(s.handlePeerQR))
-	m.Handle("GET /api/peers/{id}/usage", s.authed(s.handlePeerUsage))
-	m.Handle("GET /api/usage", s.authed(s.handleUsage))
-	m.Handle("GET /api/usage/peers", s.authed(s.handleUsageByPeer))
-	m.Handle("GET /api/settings", s.authed(s.handleGetSettings))
-	m.Handle("GET /api/audit", s.authed(s.handleAudit))
-	m.Handle("GET /api/users", s.authed(s.handleUsers))
+	// Your own devices, whatever your role.
+	m.Handle("GET /api/me/devices", s.authed(s.handleMyDevices))
+	m.Handle("POST /api/me/devices", s.authed(s.handleCreateMyDevice))
+	m.Handle("GET /api/me/devices/{id}/config", s.authed(s.handleMyDeviceConfig))
+	m.Handle("GET /api/me/devices/{id}/qr.png", s.authed(s.handleMyDeviceQR))
+	m.Handle("POST /api/me/devices/{id}/rotate", s.authed(s.handleRotateMyDevice))
+	m.Handle("DELETE /api/me/devices/{id}", s.authed(s.handleDeleteMyDevice))
+
+	// Administrators and viewers: the whole server.
+	m.Handle("GET /api/status", s.staff(s.handleStatus))
+	m.Handle("GET /api/events", s.staff(s.handleEvents))
+	m.Handle("GET /api/peers", s.staff(s.handlePeers))
+	m.Handle("GET /api/peers/{id}", s.staff(s.handlePeer))
+	m.Handle("GET /api/peers/{id}/config", s.staff(s.handlePeerConfig))
+	m.Handle("GET /api/peers/{id}/qr.png", s.staff(s.handlePeerQR))
+	m.Handle("GET /api/peers/{id}/usage", s.staff(s.handlePeerUsage))
+	m.Handle("GET /api/usage", s.staff(s.handleUsage))
+	m.Handle("GET /api/usage/peers", s.staff(s.handleUsageByPeer))
+	m.Handle("GET /api/settings", s.staff(s.handleGetSettings))
+	m.Handle("GET /api/audit", s.staff(s.handleAudit))
+	m.Handle("GET /api/users", s.staff(s.handleUsers))
 
 	// Admin role required.
 	m.Handle("POST /api/peers", s.admin(s.handleCreatePeer))
