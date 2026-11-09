@@ -102,6 +102,9 @@ func run() error {
 	}
 	log := newLogger(cfg)
 	log.Info("starting ihasvpn", "version", engine.Version)
+	if cfg.OIDCEnabled() {
+		log.Info("sign-in through an OpenID provider is on", "issuer", cfg.OIDCIssuer, "redirect", cfg.OIDCRedirectURL(), "emailDomains", strings.Join(cfg.OIDCEmailDomains, ","))
+	}
 
 	st, err := store.Open(cfg.DBPath)
 	if err != nil {
@@ -161,6 +164,9 @@ func resetPassword(args []string) error {
 	u, err := st.UserByName(ctx, args[0])
 	if err != nil {
 		return fmt.Errorf("no user named %q", args[0])
+	}
+	if u.OIDC() {
+		return fmt.Errorf("%s signs in through an OpenID provider and has no password here; sign in with a local administrator instead", u.Username)
 	}
 	var pw string
 	if v := os.Getenv("IHASVPN_NEW_PASSWORD"); v != "" {

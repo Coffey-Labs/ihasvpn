@@ -55,6 +55,10 @@ export interface Me {
   id: number;
   username: string;
   role: Role;
+  // "oidc": the account signs in through a provider and has no password here.
+  signIn: "password" | "oidc";
+  provider?: string;
+  email?: string;
   totpEnabled: boolean;
   recoveryCodesLeft: number;
   createdAt: string;
@@ -217,6 +221,8 @@ export interface User {
   id: number;
   username: string;
   role: Role;
+  signIn: "password" | "oidc";
+  email?: string;
   totpEnabled: boolean;
   devices: number;
   createdAt: string;
@@ -237,6 +243,7 @@ export type Range = "1h" | "24h" | "7d" | "30d";
 
 export const api = {
   setupStatus: () => get<{ needsSetup: boolean }>("/api/setup"),
+  authMethods: () => get<{ oidc: { name: string } | null }>("/api/auth/methods"),
   setup: (body: { username: string; password: string; endpointHost: string }) => post<Me>("/api/setup", body),
   login: (username: string, password: string) => post<{ totpRequired: boolean }>("/api/auth/login", { username, password }),
   loginTotp: (code: string) => post<{ totpRequired: boolean }>("/api/auth/totp", { code }),

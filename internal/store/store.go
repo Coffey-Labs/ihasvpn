@@ -145,6 +145,16 @@ func (s *Store) migrate(ctx context.Context) error {
 	if _, err := s.db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS peers_owner ON peers(owner_id)`); err != nil {
 		return fmt.Errorf("apply schema: %w", err)
 	}
+	// Accounts that sign in through an OpenID provider: the provider's
+	// issuer and subject name the person, and nothing else does.
+	for _, c := range [][2]string{{"oidc_issuer", "TEXT"}, {"oidc_subject", "TEXT"}, {"email", "TEXT NOT NULL DEFAULT ''"}} {
+		if err := s.addColumn(ctx, "users", c[0], c[1]); err != nil {
+			return err
+		}
+	}
+	if _, err := s.db.ExecContext(ctx, `CREATE UNIQUE INDEX IF NOT EXISTS users_oidc ON users(oidc_issuer, oidc_subject) WHERE oidc_subject IS NOT NULL`); err != nil {
+		return fmt.Errorf("apply schema: %w", err)
+	}
 	return nil
 }
 

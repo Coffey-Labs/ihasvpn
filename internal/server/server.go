@@ -21,6 +21,7 @@ import (
 	"github.com/Coffey-Labs/ihasvpn/internal/auth"
 	"github.com/Coffey-Labs/ihasvpn/internal/config"
 	"github.com/Coffey-Labs/ihasvpn/internal/engine"
+	"github.com/Coffey-Labs/ihasvpn/internal/oidc"
 	"github.com/Coffey-Labs/ihasvpn/internal/server/static"
 )
 
@@ -35,6 +36,10 @@ type Server struct {
 	http    *http.Server
 	// deviceMu makes a user's limit check and device creation one step.
 	deviceMu sync.Mutex
+	// oidc is nil unless sign-in through a provider is configured.
+	oidc         *oidc.Provider
+	oidcMu       sync.Mutex
+	oidcAttempts map[string]oidcAttempt
 }
 
 // New builds the router.
@@ -46,6 +51,10 @@ func New(cfg *config.Config, eng *engine.Engine, log *slog.Logger) *Server {
 		mux:      http.NewServeMux(),
 		ipLimit:  auth.NewLimiter(20, 15*time.Minute),
 		usrLimit: auth.NewLimiter(8, 15*time.Minute),
+		oidcAttempts: map[string]oidcAttempt{},
+	}
+	if cfg.OIDCEnabled() {
+		s.oidc = oidc.New(oidc.Config{Issuer: cfg.OIDCIssuer, ClientID: cfg.OIDCClientID, ClientSecret: cfg.OIDCClientSecret, RedirectURL: cfg.OIDCRedirectURL()}, nil)
 	}
 	s.routes()
 	return s
@@ -116,6 +125,9 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /api/setup", s.handleSetup)
 	m.HandleFunc("POST /api/auth/login", s.handleLogin)
 	m.HandleFunc("POST /api/auth/totp", s.handleLoginTOTP)
+	m.HandleFunc("GET /api/auth/methods", s.handleAuthMethods)
+	m.HandleFunc("GET /api/auth/oidc/start", s.handleOIDCStart)
+	m.HandleFunc("GET /api/auth/oidc/callback", s.handleOIDCCallback)
 	m.HandleFunc("GET /metrics", s.handleMetrics)
 
 	// Session required.

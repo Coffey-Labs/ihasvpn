@@ -21,7 +21,15 @@ type User struct {
 	TOTPEnabled  bool
 	CreatedAt    time.Time
 	LastLoginAt  time.Time
+	// OIDCIssuer and OIDCSubject are set for an account that signs in
+	// through an OpenID provider; it then has no password.
+	OIDCIssuer  string
+	OIDCSubject string
+	Email       string
 }
+
+// OIDC reports whether the account signs in through a provider.
+func (u *User) OIDC() bool { return u.OIDCSubject != "" }
 
 func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	var u User
@@ -29,13 +37,15 @@ func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	var totp int
 	var created int64
 	var last sql.NullInt64
-	if err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &secret, &totp, &created, &last); err != nil {
+	var iss, sub sql.NullString
+	if err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &secret, &totp, &created, &last, &iss, &sub, &u.Email); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrNotFound
 		}
 		return nil, err
 	}
 	u.TOTPSecret = secret.String
+	u.OIDCIssuer, u.OIDCSubject = iss.String, sub.String
 	u.TOTPEnabled = totp == 1
 	u.CreatedAt = time.Unix(created, 0)
 	if last.Valid {
@@ -44,7 +54,7 @@ func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	return &u, nil
 }
 
-const userCols = `id, username, password_hash, role, totp_secret, totp_enabled, created_at, last_login_at`
+const userCols = `id, username, password_hash, role, totp_secret, totp_enabled, created_at, last_login_at, oidc_issuer, oidc_subject, email`
 
 // CountUsers returns how many users exist; zero means first-run setup is due.
 func (s *Store) CountUsers(ctx context.Context) (int, error) {
@@ -62,6 +72,29 @@ func (s *Store) CreateUser(ctx context.Context, username, passwordHash, role str
 	}
 	id, _ := res.LastInsertId()
 	return s.UserByID(ctx, id)
+}
+
+// CreateOIDCUser inserts an account that signs in through a provider. It
+// has no password: VerifyPassword never accepts an empty hash.
+func (s *Store) CreateOIDCUser(ctx context.Context, username, role, issuer, subject, email string) (*User, error) {
+	res, err := s.db.ExecContext(ctx, `INSERT INTO users(username, password_hash, role, created_at, oidc_issuer, oidc_subject, email) VALUES(?, '', ?, ?, ?, ?, ?)`,
+		username, role, time.Now().Unix(), issuer, subject, email)
+	if err != nil {
+		return nil, err
+	}
+	id, _ := res.LastInsertId()
+	return s.UserByID(ctx, id)
+}
+
+// UserByOIDC finds the account for a provider's subject.
+func (s *Store) UserByOIDC(ctx context.Context, issuer, subject string) (*User, error) {
+	return scanUser(s.db.QueryRowContext(ctx, `SELECT `+userCols+` FROM users WHERE oidc_issuer = ? AND oidc_subject = ?`, issuer, subject))
+}
+
+// SetEmail records the address a provider gave for an account.
+func (s *Store) SetEmail(ctx context.Context, id int64, email string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE users SET email = ? WHERE id = ?`, email, id)
+	return err
 }
 
 // UserByID looks a user up by id.

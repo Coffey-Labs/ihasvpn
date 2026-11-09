@@ -136,6 +136,32 @@ routes, MTU, keepalive, peer isolation, MSS clamping, preshared keys).
 | `IHASVPN_MANAGE_SYSCTL` | `true` | Set to `false` if the host has tuned itself. |
 | `IHASVPN_DATA_DIR` | `/data` | Where the database and TLS files live. |
 | `IHASVPN_LOG_LEVEL`, `IHASVPN_LOG_JSON` | `info`, `false` | Logging. |
+| `IHASVPN_PUBLIC_URL` | | The console's address, e.g. `https://vpn.example.org`. Needed for sign-in through a provider. |
+| `IHASVPN_OIDC_ISSUER` | | The OpenID provider's issuer URL. Sign-in through the provider is on when this, the client ID and the secret are set. |
+| `IHASVPN_OIDC_CLIENT_ID`, `IHASVPN_OIDC_CLIENT_SECRET` | | The client registered at the provider. |
+| `IHASVPN_OIDC_NAME` | `single sign-on` | Shown on the button: "Sign in with …". |
+| `IHASVPN_OIDC_EMAIL_DOMAINS` | | Comma-separated. When set, only people whose email is in one of these domains may sign in. |
+
+## Signing in through an identity provider
+
+ihasvpn can hand sign-in to any OpenID Connect provider. Register a
+confidential client there with the redirect URI
+`<IHASVPN_PUBLIC_URL>/api/auth/oidc/callback`, then set the variables above
+and restart. The sign-in page gains a "Sign in with …" button; usernames and
+passwords keep working, and the first administrator still comes from the
+setup wizard.
+
+The first time someone signs in this way, ihasvpn makes them an account with
+the user role: they see their own devices and nothing else. Promote them on
+the Users page if they should see more. Accounts are matched on the
+provider's issuer and subject alone, never on a username or email, so a
+provider account can't take over a local one. Their password and second
+factor live at the provider.
+
+Deleting such an account here removes it and its devices, but they can sign
+in again and start afresh. To keep someone out, remove them at the provider,
+or narrow who may sign in with `IHASVPN_OIDC_EMAIL_DOMAINS`. Setting
+**Devices per user** to 0 means only an administrator hands out devices.
 
 ## Locked out?
 

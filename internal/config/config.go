@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Coffey-Labs/ihasvpn/internal/oidc"
 )
 
 // Config is the process configuration.
@@ -58,6 +60,28 @@ type Config struct {
 	ManageFirewall bool
 	// ManageSysctl may be turned off when the host has already tuned itself.
 	ManageSysctl bool
+	// PublicURL is where people reach the console, e.g.
+	// https://vpn.example.org. Sign-in through a provider needs it to build
+	// the address the provider sends people back to.
+	PublicURL string
+	// OIDC* turn on sign-in through an OpenID Connect provider. All three of
+	// issuer, client ID and secret, or none.
+	OIDCIssuer       string
+	OIDCClientID     string
+	OIDCClientSecret string
+	// OIDCName labels the sign-in button.
+	OIDCName string
+	// OIDCEmailDomains, when set, admits only people whose email is in one
+	// of these domains.
+	OIDCEmailDomains []string
+}
+
+// OIDCEnabled reports whether sign-in through a provider is configured.
+func (c *Config) OIDCEnabled() bool { return c.OIDCIssuer != "" }
+
+// OIDCRedirectURL is the callback the provider must have registered.
+func (c *Config) OIDCRedirectURL() string {
+	return strings.TrimSuffix(c.PublicURL, "/") + "/api/auth/oidc/callback"
 }
 
 func env(key, def string) string {
@@ -192,6 +216,26 @@ func FromEnv() (*Config, error) {
 	if c.ManageSysctl, err = envBool("IHASVPN_MANAGE_SYSCTL", true); err != nil {
 		errs = append(errs, err)
 	}
+	c.PublicURL = env("IHASVPN_PUBLIC_URL", "")
+	c.OIDCIssuer = env("IHASVPN_OIDC_ISSUER", "")
+	c.OIDCClientID = env("IHASVPN_OIDC_CLIENT_ID", "")
+	c.OIDCClientSecret = env("IHASVPN_OIDC_CLIENT_SECRET", "")
+	c.OIDCName = env("IHASVPN_OIDC_NAME", "single sign-on")
+	for _, d := range strings.Split(env("IHASVPN_OIDC_EMAIL_DOMAINS", ""), ",") {
+		if d = strings.ToLower(strings.TrimPrefix(strings.TrimSpace(d), "@")); d != "" {
+			c.OIDCEmailDomains = append(c.OIDCEmailDomains, d)
+		}
+	}
+	if set := btoi(c.OIDCIssuer != "") + btoi(c.OIDCClientID != "") + btoi(c.OIDCClientSecret != ""); set != 0 && set != 3 {
+		errs = append(errs, errors.New("IHASVPN_OIDC_ISSUER, IHASVPN_OIDC_CLIENT_ID and IHASVPN_OIDC_CLIENT_SECRET must be set together"))
+	} else if set == 3 {
+		if !oidc.SecureURL(c.OIDCIssuer) {
+			errs = append(errs, errors.New("IHASVPN_OIDC_ISSUER: must be an https URL"))
+		}
+		if !oidc.SecureURL(c.PublicURL) {
+			errs = append(errs, errors.New("IHASVPN_PUBLIC_URL: sign-in through a provider needs the console's https address, such as https://vpn.example.org"))
+		}
+	}
 	if len(errs) > 0 {
 		return nil, errors.Join(errs...)
 	}
@@ -200,3 +244,11 @@ func FromEnv() (*Config, error) {
 
 // TLSEnabled reports whether the admin listener speaks HTTPS itself.
 func (c *Config) TLSEnabled() bool { return c.TLSCert != "" || c.TLSSelfSigned }
+
+func btoi(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
