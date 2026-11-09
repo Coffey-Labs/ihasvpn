@@ -25,7 +25,8 @@ export function Login() {
         setProvider(name);
         const reason = new URLSearchParams(window.location.search).get("signin");
         if (reason) {
-          setError(signInMessage(reason, name ?? "your provider"));
+          const refusal = reason === "not-allowed" ? takeRefusal() : null;
+          setError(refusal ? refusalMessage(refusal, name ?? "your provider") : signInMessage(reason, name ?? "your provider"));
           window.history.replaceState(null, "", window.location.pathname);
         }
       })
@@ -115,4 +116,36 @@ function signInMessage(reason: string, provider: string): string {
     default:
       return "Something went wrong signing you in. Try again.";
   }
+}
+
+// Why the email check turned someone away, from a cookie the server sets for
+// two minutes. Read once, then cleared.
+type Refusal = { email: string; domains: string[]; unverified: boolean };
+
+const refusalCookie = "ihasvpn_signin_refused";
+
+function takeRefusal(): Refusal | null {
+  const m = document.cookie.match(new RegExp(`(?:^|;\\s*)${refusalCookie}=([^;]*)`));
+  if (!m) return null;
+  document.cookie = `${refusalCookie}=; Path=/; Max-Age=0; SameSite=Lax${window.location.protocol === "https:" ? "; Secure" : ""}`;
+  try {
+    const bin = atob(m[1].replace(/-/g, "+").replace(/_/g, "/"));
+    const r = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0))));
+    if (typeof r?.email !== "string" || !Array.isArray(r.domains) || !r.domains.every((d: unknown) => typeof d === "string")) return null;
+    return { email: r.email, domains: r.domains, unverified: r.unverified === true };
+  } catch {
+    return null;
+  }
+}
+
+function refusalMessage(r: Refusal, provider: string): string {
+  const allowed = orList(r.domains);
+  if (r.unverified) return `${provider} hasn't confirmed that ${r.email} is yours, so it can't be used to sign in here.`;
+  if (!r.email) return `${provider} didn't share an email address, and this server only takes addresses at ${allowed}.`;
+  return `${provider} signed you in as ${r.email}, but this server only takes addresses at ${allowed}.`;
+}
+
+function orList(items: string[]): string {
+  if (items.length <= 1) return items.join("");
+  return `${items.slice(0, -1).join(", ")} or ${items[items.length - 1]}`;
 }

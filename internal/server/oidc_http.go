@@ -3,6 +3,8 @@ package server
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -28,6 +30,9 @@ const (
 	oidcAttemptTTL = 10 * time.Minute
 	// maxOIDCAttempts bounds the sign-ins in flight, which live in memory.
 	maxOIDCAttempts = 1000
+	// refusalCookie tells the sign-in page why the email check turned
+	// someone away. The page reads it once and clears it.
+	refusalCookie = "ihasvpn_signin_refused"
 )
 
 type oidcAttempt struct {
@@ -171,6 +176,7 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 	if !s.emailAllowed(id) {
 		s.log.Warn("oidc: email domain not allowed", "email", id.Email, "subject", id.Subject, "ip", ip)
 		_ = s.eng.Store().Audit(ctx, store.AuditEntry{Actor: id.Email, Action: "login.refused", Detail: "email domain not allowed", IP: ip})
+		s.setRefusal(w, id)
 		s.signInFailed(w, r, "not-allowed")
 		return
 	}
@@ -208,17 +214,54 @@ func (s *Server) emailAllowed(id *oidc.Identity) bool {
 	if len(s.cfg.OIDCEmailDomains) == 0 {
 		return true
 	}
-	at := strings.LastIndexByte(id.Email, '@')
-	if at < 0 || !id.EmailVerified {
+	return id.EmailVerified && s.domainListed(id.Email)
+}
+
+// domainListed reports whether email is at one of the allowed domains.
+func (s *Server) domainListed(email string) bool {
+	at := strings.LastIndexByte(email, '@')
+	if at < 0 {
 		return false
 	}
-	domain := strings.ToLower(id.Email[at+1:])
+	domain := strings.ToLower(email[at+1:])
 	for _, d := range s.cfg.OIDCEmailDomains {
 		if domain == d {
 			return true
 		}
 	}
 	return false
+}
+
+// refusal is what the sign-in page shows when the email check turns someone
+// away: the address the provider sent and the domains this server takes. It
+// goes in a short-lived cookie rather than the address bar, so the address
+// stays out of browser history and access logs.
+type refusal struct {
+	Email      string   `json:"email"`
+	Domains    []string `json:"domains"`
+	Unverified bool     `json:"unverified,omitempty"`
+}
+
+func (s *Server) setRefusal(w http.ResponseWriter, id *oidc.Identity) {
+	email := id.Email
+	if len(email) > 254 {
+		email = email[:254]
+	}
+	b, err := json.Marshal(refusal{
+		Email:   email,
+		Domains: s.cfg.OIDCEmailDomains,
+		// The address is at an allowed domain; the provider just hasn't
+		// confirmed it belongs to them.
+		Unverified: !id.EmailVerified && s.domainListed(id.Email),
+	})
+	if err != nil {
+		return
+	}
+	// Not HttpOnly: the sign-in page reads it.
+	http.SetCookie(w, &http.Cookie{
+		Name: refusalCookie, Value: base64.RawURLEncoding.EncodeToString(b), Path: "/",
+		Secure: s.oidcCookieSecure(), SameSite: http.SameSiteLaxMode, MaxAge: 120,
+	})
 }
 
 // createOIDCUser makes the account for a first sign-in. The username is the

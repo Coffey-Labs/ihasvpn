@@ -160,7 +160,10 @@ factor live at the provider.
 
 Deleting such an account here removes it and its devices, but they can sign
 in again and start afresh. To keep someone out, remove them at the provider,
-or narrow who may sign in with `IHASVPN_OIDC_EMAIL_DOMAINS`. Setting
+or narrow who may sign in with `IHASVPN_OIDC_EMAIL_DOMAINS`. The domain is
+checked against the email the provider sends, which may be the account's
+main address rather than an alias you also receive mail at; someone turned
+away is shown the address that was checked and the domains allowed. Setting
 **Devices per user** to 0 means only an administrator hands out devices.
 
 ## Locked out?
