@@ -86,6 +86,13 @@ docker compose up -d
 Open <http://localhost:51821>, create the first administrator, and add a
 peer. Point the WireGuard app on your phone at the QR code.
 
+Creating the first administrator needs the setup token that ihasvpn prints
+when it starts with no users, so whoever reaches a fresh console first can't
+claim it. Find it with `docker logs ihasvpn`. With `IHASVPN_PUBLIC_URL` set,
+the log gives the whole address to open instead. To choose the token
+yourself, set `IHASVPN_SETUP_TOKEN`. The token stops working once the first
+administrator exists.
+
 The console is bound to localhost in the compose file on purpose. To reach
 it from elsewhere, either set `IHASVPN_TLS_SELF_SIGNED: "true"` and bind to the
 address you need, or put a TLS-terminating reverse proxy in front of it and
@@ -127,6 +134,7 @@ routes, MTU, keepalive, peer isolation, MSS clamping, preshared keys).
 | `IHASVPN_SECURE_COOKIES` | `false` | Mark cookies `Secure` when TLS terminates at a proxy. |
 | `IHASVPN_TRUSTED_PROXIES` | | CIDRs whose `X-Forwarded-For` is believed. |
 | `IHASVPN_METRICS_TOKEN` | | Bearer token for `/metrics`. A signed-in session works too. |
+| `IHASVPN_SETUP_TOKEN` | made up at start | The token that creating the first administrator needs, 16 to 256 characters. Unset, one is made up and printed in the log. |
 | `IHASVPN_SESSION_IDLE` | `12h` | Sign out after this much inactivity. |
 | `IHASVPN_SESSION_MAX` | `168h` | Sign out after this long regardless. |
 | `IHASVPN_TRAFFIC_RETENTION` | `2160h` | How long usage history is kept (90 days). |
