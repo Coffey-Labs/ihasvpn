@@ -42,6 +42,9 @@ type Config struct {
 	TrustedProxies []netip.Prefix
 	// MetricsToken protects /metrics; empty disables the endpoint.
 	MetricsToken string
+	// SetupToken, when set, is the token that creating the first
+	// administrator needs. Empty means one is made up at start and logged.
+	SetupToken string
 	// SessionIdle / SessionMax bound admin sessions.
 	SessionIdle time.Duration
 	SessionMax  time.Duration
@@ -190,6 +193,10 @@ func FromEnv() (*Config, error) {
 		c.TrustedProxies = append(c.TrustedProxies, pfx)
 	}
 	c.MetricsToken = env("IHASVPN_METRICS_TOKEN", "")
+	c.SetupToken = strings.TrimSpace(env("IHASVPN_SETUP_TOKEN", ""))
+	if c.SetupToken != "" && (len(c.SetupToken) < MinSetupToken || len(c.SetupToken) > 256 || strings.ContainsAny(c.SetupToken, " \t\r\n")) {
+		errs = append(errs, fmt.Errorf("IHASVPN_SETUP_TOKEN: must be %d to 256 characters with no spaces (openssl rand -hex 16 makes one)", MinSetupToken))
+	}
 	if c.SessionIdle, err = envDuration("IHASVPN_SESSION_IDLE", 12*time.Hour); err != nil {
 		errs = append(errs, err)
 	}
@@ -241,6 +248,9 @@ func FromEnv() (*Config, error) {
 	}
 	return c, nil
 }
+
+// MinSetupToken is the shortest IHASVPN_SETUP_TOKEN accepted.
+const MinSetupToken = 16
 
 // TLSEnabled reports whether the admin listener speaks HTTPS itself.
 func (c *Config) TLSEnabled() bool { return c.TLSCert != "" || c.TLSSelfSigned }
