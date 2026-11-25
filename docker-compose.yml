@@ -1,7 +1,7 @@
 # ihasvpn: a WireGuard server with a web admin UI, in one container.
 #
-# Start it, open http://<host>:51821, create the first administrator, add a
-# peer, scan the QR code. The container needs NET_ADMIN to create the tunnel
+# Start it, open http://<host>:51821, create the first administrator with the
+# setup token from `docker logs ihasvpn`, add a peer, scan the QR code. The container needs NET_ADMIN to create the tunnel
 # interface and its NAT rules, and the sysctls below to forward packets.
 #
 # For the highest throughput see docs/performance.md: it explains when to use
@@ -45,6 +45,7 @@ services:
       # IHASVPN_TLS_SELF_SIGNED: "true"
       # IHASVPN_TRUSTED_PROXIES: 172.16.0.0/12
       # IHASVPN_METRICS_TOKEN: change-me
+      # IHASVPN_SETUP_TOKEN: choose-your-own-16-plus
     ports:
       - "51820:51820/udp"
       - "127.0.0.1:51821:51821/tcp"

@@ -22,7 +22,7 @@ func (c *client) as(t *testing.T, username, password string) *client {
 
 func TestOwnDevices(t *testing.T) {
 	admin, eng := newClient(t)
-	admin.expect("POST", "/api/setup", map[string]string{"username": "admin", "password": "a-long-enough-password", "endpointHost": "vpn.test"}, 201)
+	admin.expect("POST", "/api/setup", map[string]string{"token": testSetupToken, "username": "admin", "password": "a-long-enough-password", "endpointHost": "vpn.test"}, 201)
 	out := admin.expect("POST", "/api/users", map[string]string{"username": "sam", "password": "sams-long-password", "role": "user"}, 201)
 	var sam struct{ ID int64 }
 	_ = json.Unmarshal(out, &sam)
@@ -120,7 +120,7 @@ func TestOwnDevices(t *testing.T) {
 
 func TestViewerHasNoDeviceLimitBypass(t *testing.T) {
 	admin, _ := newClient(t)
-	admin.expect("POST", "/api/setup", map[string]string{"username": "admin", "password": "a-long-enough-password", "endpointHost": "vpn.test"}, 201)
+	admin.expect("POST", "/api/setup", map[string]string{"token": testSetupToken, "username": "admin", "password": "a-long-enough-password", "endpointHost": "vpn.test"}, 201)
 	admin.expect("POST", "/api/users", map[string]string{"username": "vic", "password": "vics-long-password", "role": "viewer"}, 201)
 	var s engine.Settings
 	_ = json.Unmarshal(admin.expect("GET", "/api/settings", nil, 200), &s)

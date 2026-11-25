@@ -137,6 +137,8 @@ func (s *Server) audit(r *http.Request, action, target, detail string) {
 
 type setupStatus struct {
 	NeedsSetup bool `json:"needsSetup"`
+	// TokenRequired tells the setup page to ask for the setup token.
+	TokenRequired bool `json:"tokenRequired"`
 }
 
 func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
@@ -145,10 +147,11 @@ func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, setupStatus{NeedsSetup: n == 0})
+	writeJSON(w, http.StatusOK, setupStatus{NeedsSetup: n == 0, TokenRequired: n == 0})
 }
 
 type setupRequest struct {
+	Token        string `json:"token"`
 	Username     string `json:"username"`
 	Password     string `json:"password"`
 	EndpointHost string `json:"endpointHost"`
@@ -167,12 +170,23 @@ func validUsername(u string) bool {
 }
 
 // handleSetup creates the first administrator. It only works while there
-// are no users at all, so a running server cannot be taken over by it.
+// are no users at all, so a running server cannot be taken over by it, and
+// only with the setup token from the server's log (setup.go), so a fresh one
+// cannot be taken over by whoever reaches it first.
 func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 	if !s.sameOrigin(r) {
 		writeError(w, http.StatusForbidden, "cross-site request refused")
 		return
 	}
+	ip := s.clientIP(r)
+	if ok, wait := s.ipLimit.Allowed(ip); !ok {
+		w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
+		writeError(w, http.StatusTooManyRequests, "too many attempts; try again later")
+		return
+	}
+	// One setup at a time, so two requests cannot both find no users.
+	s.setupMu.Lock()
+	defer s.setupMu.Unlock()
 	ctx := r.Context()
 	n, err := s.eng.Store().CountUsers(ctx)
 	if err != nil {
@@ -183,8 +197,15 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "setup has already been completed")
 		return
 	}
+	s.ensureSetupTokenLocked()
 	var req setupRequest
 	if !readJSON(w, r, &req) {
+		return
+	}
+	if !s.setupTokenOK(strings.TrimSpace(req.Token)) {
+		s.ipLimit.Fail(ip)
+		s.log.Warn("setup refused: wrong or missing setup token", "ip", ip)
+		writeError(w, http.StatusForbidden, "wrong or missing setup token; it is in the server's log (docker logs ihasvpn)")
 		return
 	}
 	req.Username = strings.TrimSpace(req.Username)
@@ -222,6 +243,8 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.setupToken = ""
+	s.ipLimit.Reset(ip)
 	r = r.WithContext(context.WithValue(ctx, ctxUser, u))
 	s.audit(r, "setup", u.Username, "first administrator created")
 	writeJSON(w, http.StatusCreated, s.meBody(ctx, u))

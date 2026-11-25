@@ -72,7 +72,7 @@ func newOIDCServer(t *testing.T, f *fakeProvider, domains ...string) *httptest.S
 		DBPath: ":memory:", Backend: "mock", Iface: "wg0", ListenPort: 51820,
 		Subnet4: netip.MustParsePrefix("10.8.0.0/24"), HTTP: "127.0.0.1:0",
 		SessionIdle: time.Hour, SessionMax: 24 * time.Hour, TrafficRetention: time.Hour, PollInterval: time.Hour,
-		InitialEndpoint: "vpn.example.com", InitialDNS: "1.1.1.1",
+		InitialEndpoint: "vpn.example.com", InitialDNS: "1.1.1.1", SetupToken: testSetupToken,
 		PublicURL: "http://127.0.0.1", OIDCIssuer: f.srv.URL, OIDCClientID: "vpn", OIDCClientSecret: "s3cret", OIDCName: "Example ID",
 		OIDCEmailDomains: domains,
 	}
@@ -130,7 +130,7 @@ func TestOIDCSignIn(t *testing.T) {
 	if loc := f.signIn(t, browser(t, srv), "1", "sam@example.org"); loc != "/?signin=setup" {
 		t.Fatalf("before setup: %s", loc)
 	}
-	admin.expect("POST", "/api/setup", map[string]string{"username": "admin", "password": "a-long-enough-password", "endpointHost": "vpn.test"}, 201)
+	admin.expect("POST", "/api/setup", map[string]string{"token": testSetupToken, "username": "admin", "password": "a-long-enough-password", "endpointHost": "vpn.test"}, 201)
 
 	sam := browser(t, srv)
 	if loc := f.signIn(t, sam, "1", "sam@example.org"); loc != "/" {
@@ -188,7 +188,7 @@ func TestOIDCStateChecks(t *testing.T) {
 	f := newFakeProvider(t)
 	srv := newOIDCServer(t, f)
 	admin := browser(t, srv)
-	admin.expect("POST", "/api/setup", map[string]string{"username": "admin", "password": "a-long-enough-password", "endpointHost": "vpn.test"}, 201)
+	admin.expect("POST", "/api/setup", map[string]string{"token": testSetupToken, "username": "admin", "password": "a-long-enough-password", "endpointHost": "vpn.test"}, 201)
 
 	b := browser(t, srv)
 	res, _ := b.do("GET", "/api/auth/oidc/start", nil)
@@ -218,7 +218,7 @@ func TestOIDCEmailDomains(t *testing.T) {
 	f := newFakeProvider(t)
 	srv := newOIDCServer(t, f, "example.org")
 	admin := browser(t, srv)
-	admin.expect("POST", "/api/setup", map[string]string{"username": "admin", "password": "a-long-enough-password", "endpointHost": "vpn.test"}, 201)
+	admin.expect("POST", "/api/setup", map[string]string{"token": testSetupToken, "username": "admin", "password": "a-long-enough-password", "endpointHost": "vpn.test"}, 201)
 	eve := browser(t, srv)
 	if loc := f.signIn(t, eve, "1", "eve@elsewhere.net"); loc != "/?signin=not-allowed" {
 		t.Fatalf("other domain: %s", loc)

@@ -40,6 +40,10 @@ type Server struct {
 	oidc         *oidc.Provider
 	oidcMu       sync.Mutex
 	oidcAttempts map[string]oidcAttempt
+	// setupMu makes first-run setup one step at a time; setupToken is what
+	// it needs while no user exists (see setup.go).
+	setupMu    sync.Mutex
+	setupToken string
 }
 
 // New builds the router.
@@ -56,6 +60,7 @@ func New(cfg *config.Config, eng *engine.Engine, log *slog.Logger) *Server {
 	if cfg.OIDCEnabled() {
 		s.oidc = oidc.New(oidc.Config{Issuer: cfg.OIDCIssuer, ClientID: cfg.OIDCClientID, ClientSecret: cfg.OIDCClientSecret, RedirectURL: cfg.OIDCRedirectURL()}, nil)
 	}
+	s.prepareSetup(context.Background())
 	s.routes()
 	return s
 }
