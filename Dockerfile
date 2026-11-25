@@ -24,6 +24,18 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/Coffey-Labs/i
 
 # ---- runtime ----
 FROM mirror.gcr.io/library/alpine:3.22
+# Re-declared: an ARG does not cross stages. For the labels.
+ARG IHASVPN_VERSION=dev
+ARG IHASVPN_REVISION=""
+# What the image says it is, for registries and anyone inspecting it.
+LABEL org.opencontainers.image.title="ihasvpn" \
+      org.opencontainers.image.description="A self-hosted WireGuard server with a secure web console, in one container." \
+      org.opencontainers.image.url="https://ihasvpn.org/" \
+      org.opencontainers.image.source="https://git.coffeylabs.org/coffey-labs/ihasvpn" \
+      org.opencontainers.image.licenses="AGPL-3.0-or-later" \
+      org.opencontainers.image.vendor="Coffey Labs LLC" \
+      org.opencontainers.image.version="$IHASVPN_VERSION" \
+      org.opencontainers.image.revision="$IHASVPN_REVISION"
 # nftables does the NAT; wireguard-go is the fallback data plane for hosts
 # without the kernel module; wireguard-tools gives `wg show` for debugging.
 RUN apk add --no-cache nftables wireguard-go wireguard-tools ca-certificates tzdata \

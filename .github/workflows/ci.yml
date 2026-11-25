@@ -135,7 +135,9 @@ jobs:
         with:
           context: .
           platforms: ${{ matrix.platform }}
-          build-args: IHASVPN_VERSION=${{ env.VERSION }}
+          build-args: |
+            IHASVPN_VERSION=${{ env.VERSION }}
+            IHASVPN_REVISION=${{ github.sha }}
           # Attestations would add manifests of their own to the index, and
           # `imagetools create` below expects just the two it pushed.
           provenance: false

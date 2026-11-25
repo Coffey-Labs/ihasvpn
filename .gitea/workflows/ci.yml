@@ -129,6 +129,7 @@ jobs:
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
             --build-arg IHASVPN_VERSION="$VERSION" \
+            --build-arg IHASVPN_REVISION="${{ github.sha }}" \
             --provenance=false --sbom=false \
             --tag "$IMAGE:$VERSION" \
             --tag "$IMAGE:latest" \
